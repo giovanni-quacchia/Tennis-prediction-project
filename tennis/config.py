@@ -4,7 +4,7 @@ class DataConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
     
     data_path: str | None = "dataset/csv/tennis.csv"
-    output_path: str | None = "dataset/traindata.csv"
+    output_path: str | None = "dataset/trainedData.csv"
 
     # start-end date for training data
     min_date: str = "2004-01-01"
@@ -24,10 +24,18 @@ class FeatureConfig(BaseModel):
         "loser_df",
     ]
 
-# Three learning algorithms
+"""
+Learning algorithms with hyperparameters to be tuned:
+- K-Nearest Neighbors
+- Random Forest
+"""
+
+class KNNConfig(BaseModel):
+    n_neighbors: int = 5
+    weights: str = "distance"
+    p: int = 2 # euclidean distance
 
 class RandomForestConfig(BaseModel):
-    # hyper-parameters for Random Forest
     n_estimators: int = 100
     max_depth: int | None = None
     random_state: int = 42 
@@ -37,5 +45,6 @@ class TrainingConfig(BaseModel):
     test_size: float = 0.3
     random_state: int = 42
 
+    knn: KNNConfig = KNNConfig()
     random_forest: RandomForestConfig = RandomForestConfig()
 
