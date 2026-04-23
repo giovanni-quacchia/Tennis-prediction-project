@@ -5,7 +5,10 @@ class DataConfig(BaseModel):
     
     # https://www.kaggle.com/datasets/dissfya/atp-tennis-2000-2023daily-pull/data
     raw_data_path: str | None = "dataset/csv/tennis.xlsx"
-    trained_path: str | None = "dataset/trainedData.csv"
+    prepared_data_path: str | None = "dataset/csv/tennis_prepared.xlsx"
+    testing_data_path: str | None = "dataset/csv/tennis_testing.xlsx"
+
+    knn_model_path: str | None = "tennis/models/knn_model.pkl"
 
     # start-end date for training data
     min_date: str = "2004-01-01"
@@ -18,33 +21,41 @@ class FeatureConfig(BaseModel):
     raw: list[str] = [
         "WRank", "LRank",       # Ranking
         "WPts", "LPts",         # Entry points 
-        "B365W", "B365L",       # Bet365 odds
+        "B365W", "B365L",       # Bets
+        "PSW", "PSL",
+        "MaxW", "MaxL",
+        "AvgW", "AvgL",
         "Court", "Surface",     # Categories with natural order
-        "Winner", "Loser"       # Players
+        "Winner", "Loser",      # Players
+        "Date"
     ]
 
     numeric: list[str] = [
-        "Rank_Diff", "Pts_Diff", "Bet_Diff"
+        "Rank_Diff", "Pts_Diff",
+        "B365_Bet_Diff", "PS_Bet_Diff", "Max_Bet_Diff", "Avg_Bet_Diff"
     ]
 
     categorical: list[str] = [
         "Court", "Surface"
     ]
 
+    trainable: list[str] = numeric + categorical
+
     debug: list[str] = [
-        "P1", "P2",             # Players after random swap
+        "Winner", "Loser",       # Players after random swap
+        "Date"
     ]
 
 """
-Learning algorithms with hyperparameters to be tuned:
+Learning algorithms with tuned hyperparameters:
 - K-Nearest Neighbors
 - Random Forest
 """
 
 class KNNConfig(BaseModel):
-    n_neighbors: int = 5
-    weights: str = "distance"
-    p: int = 2 # euclidean distance
+    n_neighbors: int = 55
+    weights: str = "uniform"
+    p: int = 1 # euclidean distance
 
     test_size: float = 0.3
     random_state: int = 42

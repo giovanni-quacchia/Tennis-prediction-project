@@ -16,47 +16,53 @@ Shape: (2644, 38)
 
 0 duplicates
 """
-def prepare_data():
+def prepare_data(raw_df: pd.DataFrame) -> pd.DataFrame:
 
-    config, features = DataConfig(), FeatureConfig()
-    raw_df = pd.read_excel(config.raw_data_path)
+    features = FeatureConfig()
     df = raw_df[features.raw].copy()
 
-    # --- Random Swap Player 1 and Player 2 ---
-    # Otherwise, the model will learn to alway pick Player 1 as the winner
-
-    rng = np.random.default_rng(seed=42)
-    swap_mask = rng.integers(0, 2, size=len(df)).astype(bool) # Randomly swap 50% of the rows
-
-    df["P1"], df["P2"] = df["Winner"], df["Loser"]
-    df["P1_Rank"], df["P2_Rank"] = df["WRank"], df["LRank"]
-    df["P1_Pts"], df["P2_Pts"] = df["WPts"], df["LPts"]
-    df["P1_Bet"], df["P2_Bet"] = df["B365W"], df["B365L"] # TODO: avg odds from multiple bookmakers
-    df["y"] = 1 # P1 wins
-
-    # Swap players randomly 50% of the time 
-    df.loc[swap_mask, ["P1", "P2"]] = df.loc[swap_mask, ["P2", "P1"]].values
-    df.loc[swap_mask, ["P1_Rank", "P2_Rank"]] = df.loc[swap_mask, ["P2_Rank", "P1_Rank"]].values
-    df.loc[swap_mask, ["P1_Pts", "P2_Pts"]] = df.loc[swap_mask, ["P2_Pts", "P1_Pts"]].values
-    df.loc[swap_mask, ["P1_Bet", "P2_Bet"]] = df.loc[swap_mask, ["P2_Bet", "P1_Bet"]].values
-    df.loc[swap_mask, "y"] = 0 # P2 wins
+    raw_numeric_cols = ["WRank", "LRank", "WPts", "LPts", "B365W", "B365L", "PSW", "PSL", "MaxW", "MaxL", "AvgW", "AvgL"]
+    for col in raw_numeric_cols:
+        df[col] = pd.to_numeric(df[col], errors="coerce")
 
     # --- Feature engineering ---
-    df["Rank_Diff"] = df["P1_Rank"] - df["P2_Rank"]
-    df["Pts_Diff"] = df["P1_Pts"] - df["P2_Pts"]
-    df["Bet_Diff"] = df["P1_Bet"] - df["P2_Bet"]
+    df["y"] = 1 # P1 wins  
+
+    df["Rank_Diff"] = df["WRank"] - df["LRank"]
+    df["Pts_Diff"] = df["WPts"] - df["LPts"]
+    
+    df["B365_Bet_Diff"] = df["B365W"] - df["B365L"]
+    df["PS_Bet_Diff"] = df["PSW"] - df["PSL"]
+    df["Max_Bet_Diff"] = df["MaxW"] - df["MaxL"]
+    df["Avg_Bet_Diff"] = df["AvgW"] - df["AvgL"]
+
+    random_swap(df)
 
     # --- Selection ---
     df = df[features.numeric + features.categorical + features.debug + ["y"]]
     
     return df
 
+# --- Random Swap Player 1 and Player 2 ---
+# Otherwise, the model will learn to alway pick Player 1 as the winner
+def random_swap(df):
+    rng = np.random.default_rng(seed=42)
+    swap_mask = rng.integers(0, 2, size=len(df)).astype(bool) # Randomly swap 50% of the rows
+
+    # Swap players randomly 50% of the time 
+    df.loc[swap_mask, ["Winner", "Loser"]] = df.loc[swap_mask, ["Loser", "Winner"]].values
+
+    diff_cols = ["Rank_Diff", "Pts_Diff", "B365_Bet_Diff", "PS_Bet_Diff", "Max_Bet_Diff", "Avg_Bet_Diff"]
+    for col in diff_cols:
+        df.loc[swap_mask, col] = df.loc[swap_mask, col] * -1 # Invert difference for swapped rows
+
+    df.loc[swap_mask, "y"] = 0 # P2 wins
+
 def preprocess_data(X_train, X_test, y_train, y_test, scale=True):
     features = FeatureConfig()
 
     num_steps = [("imputer", SimpleImputer(strategy="median"))]
-    if scale: num_steps.append(("scaler", StandardScaler()))
-        
+    if scale: num_steps.append(("scaler", StandardScaler()))   
     
     preprocessor = ColumnTransformer(transformers=[
         ("num", Pipeline(num_steps, features.numeric)),

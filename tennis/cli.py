@@ -1,17 +1,9 @@
 import typer
-from tennis.config import TrainingConfig
+import joblib
+import pandas as pd
 from tennis.models.knn import TennisKNN
 from tennis.data_loader import prepare_data as prepare_data_func
-from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
-from sklearn.model_selection import train_test_split
-
-from sklearn.impute import SimpleImputer
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.pipeline import Pipeline
-from sklearn.model_selection import cross_val_score
-from tennis.config import FeatureConfig
-
+from tennis.config import DataConfig, TrainingConfig, FeatureConfig
 
 app = typer.Typer()
 
@@ -21,37 +13,47 @@ def hello(name: str):
 
 @app.command()
 def prepare_data():
-    prepare_data_func()
+    config = DataConfig()
+
+    raw_df = pd.read_excel(config.raw_data_path)
+    df = prepare_data_func(raw_df)
+    print(df.head())
+
+    df.to_excel(config.prepared_data_path, index=False)
     typer.echo("Data prepared successfully.")
 
 @app.command()
 def train_knn():
 
-    training_config, config = TrainingConfig(), FeatureConfig()
-    
+    config, training_config = DataConfig(), TrainingConfig()
     model = TennisKNN(training_config.knn)
 
-    df = prepare_data_func()
+    training_set = pd.read_excel(config.prepared_data_path)
 
-    X, y = df.drop(columns=["y", "P1", "P2"]), df["y"]
+    typer.echo("Training KNN model...")
+    params, accuracy = model.train(training_set)
 
-    num_pipeline = Pipeline([
-        ("imputer", SimpleImputer(strategy="median")),
-        ("scaler", StandardScaler())
-    ])
+    typer.echo(f"Best hyperparameters: {params}")
+    typer.echo(f"Cross-validation accuracy: {accuracy:.2%}")
 
-    cat_pipeline = Pipeline([
-        ("imputer", SimpleImputer(strategy="most_frequent")),
-        ("ohe", OneHotEncoder(handle_unknown="ignore", sparse_output=False))
-    ])
+    typer.echo("Training completed. Saving the model...")
+    # Save the model for future tests
+    joblib.dump(model.fitted_pipeline, config.knn_model_path)
 
-    preprocessor = ColumnTransformer(transformers=[
-        ("num", num_pipeline, config.numeric),
-        ("cat", cat_pipeline, config.categorical)
-    ], verbose_feature_names_out=False)
+@app.command()
+def predict_knn():
 
-    typer.echo("Starting Grid Search Tuning...")
-    best_params, best_score = model.tune_hyperparameters(X, y, preprocessor)
+    config, training_config = DataConfig(), TrainingConfig()
+    features = FeatureConfig()
 
-    print("Best Hyperparameters:", best_params)
-    print("Best CV Accuracy:", f"{best_score:.2%}")
+    pipeline = joblib.load(config.knn_model_path)
+    
+    # Testing set
+    raw_df = pd.read_excel(config.testing_data_path)
+    testing_set = prepare_data_func(raw_df)
+    X,y = testing_set[features.trainable], testing_set["y"]
+
+    predictions = pipeline.predict(X)
+
+    accuracy = (predictions == y).mean()
+    print("Test Accuracy:", f"{accuracy:.2%}")
