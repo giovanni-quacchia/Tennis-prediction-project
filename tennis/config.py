@@ -3,8 +3,9 @@ from pydantic import BaseModel, ConfigDict
 class DataConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
     
-    data_path: str | None = "dataset/csv/tennis.csv"
-    output_path: str | None = "dataset/trainedData.csv"
+    # https://www.kaggle.com/datasets/dissfya/atp-tennis-2000-2023daily-pull/data
+    raw_data_path: str | None = "dataset/csv/tennis.xlsx"
+    trained_path: str | None = "dataset/trainedData.csv"
 
     # start-end date for training data
     min_date: str = "2004-01-01"
@@ -12,16 +13,26 @@ class DataConfig(BaseModel):
 
     epsilon: float = 0.001
 
+# http://www.tennis-data.co.uk/notes.txt
 class FeatureConfig(BaseModel):
-    selected: list[str] = [
-        "winner_rank",
-        "loser_rank",
-        "winner_elo",
-        "loser_elo",
-        "winner_ace",
-        "loser_ace",
-        "winner_df",
-        "loser_df",
+    raw: list[str] = [
+        "WRank", "LRank",       # Ranking
+        "WPts", "LPts",         # Entry points 
+        "B365W", "B365L",       # Bet365 odds
+        "Court", "Surface",     # Categories with natural order
+        "Winner", "Loser"       # Players
+    ]
+
+    numeric: list[str] = [
+        "Rank_Diff", "Pts_Diff", "Bet_Diff"
+    ]
+
+    categorical: list[str] = [
+        "Court", "Surface"
+    ]
+
+    debug: list[str] = [
+        "P1", "P2",             # Players after random swap
     ]
 
 """
@@ -34,6 +45,9 @@ class KNNConfig(BaseModel):
     n_neighbors: int = 5
     weights: str = "distance"
     p: int = 2 # euclidean distance
+
+    test_size: float = 0.3
+    random_state: int = 42
 
 class RandomForestConfig(BaseModel):
     n_estimators: int = 100

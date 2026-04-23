@@ -1,6 +1,9 @@
+from sklearn.pipeline import Pipeline
+
 from tennis.config import KNNConfig
-from sklearn.preprocessing import StandardScaler
+from sklearn.model_selection import GridSearchCV
 from sklearn.neighbors import KNeighborsClassifier
+
 
 class TennisKNN:
     def __init__(self, config: KNNConfig):
@@ -9,12 +12,34 @@ class TennisKNN:
             weights=config.weights,
             p=config.p
         )
-        self.scaler = StandardScaler()
+
+    def tune_hyperparameters(self, X, y, preprocessor):
+        param_grid = {
+            "model__n_neighbors": [3, 5, 7, 9, 11, 15, 17, 19, 21, 23, 25],
+            "model__weights": ["uniform", "distance"],
+            "model__p": [1, 2] # Manhattan - Euclidean distance
+        }
+
+        full_pipeline = Pipeline([
+            ("preprocessor", preprocessor),
+            ("model", self.model)
+        ])
+
+        grid_search = GridSearchCV(
+            estimator=full_pipeline,
+            param_grid=param_grid,
+            cv=10,
+            scoring="accuracy",
+            n_jobs=-1
+        )
+
+        grid_search.fit(X, y)
+        return grid_search.best_params_, grid_search.best_score_
 
     def train(self, X, y):
-        X_scaled = self.scaler.fit_transform(X)
-        self.model.fit(X_scaled, y)
+        self.model.fit(X, y)
 
     def predict(self, X):
-        X_scaled = self.scaler.transform(X)
-        return self.model.predict(X_scaled)
+        return self.model.predict(X)
+    
+
