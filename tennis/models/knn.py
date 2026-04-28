@@ -1,18 +1,19 @@
-import math
-from xml.parsers.expat import model
-
 from sklearn.pipeline import Pipeline
 
-from tennis.config import KNNConfig
+from tennis.config import KNNConfig, TrainingConfig
 from sklearn.model_selection import GridSearchCV
 from sklearn.neighbors import KNeighborsClassifier
 
+from sklearn.pipeline import Pipeline
 from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.preprocessing import StandardScaler, OneHotEncoder, MinMaxScaler
-from sklearn.pipeline import Pipeline
 
 from tennis.config import FeatureConfig
+
+from sklearn.ensemble import BaggingClassifier
+
+import numpy as np
 
 class TennisKNN:
     def __init__(self, config: KNNConfig):
@@ -23,23 +24,35 @@ class TennisKNN:
         )
 
     def tune_hyperparameters(self, X, y, preprocessor):
+        config = TrainingConfig()
         param_grid = {
-            "model__n_neighbors": [i for i in range(1, 60, 2)],
-            "model__weights": ["uniform", "distance"],
-            "model__p": [1, 2] # Manhattan - Euclidean distance
+            # KNN hyperparams
+            "model__estimator__n_neighbors": [1, 7, 11, 15, 25, 31, 35, 45, 51],
+            "model__estimator__weights": ["uniform", "distance"],
+            "model__estimator__p": [1, 2], # Manhattan - Euclidean distance
+
+            # Ensemble hyperparams
+            "model__n_estimators": [10,50], # number of submodels
+            "model__max_samples": [0.5, 1.0], # 50% or 100% of the training data
         }
+
+        # Wrap KNN model in a Bagging ensemble
+        bagging_knn = BaggingClassifier(
+            estimator=self.model, 
+            random_state=config.random_state,
+            n_jobs=-1)
 
         full_pipeline = Pipeline([
             ("preprocessor", preprocessor),
-            ("model", self.model)
+            ("model", bagging_knn)
         ])
 
         grid_search = GridSearchCV(
             estimator=full_pipeline,
             param_grid=param_grid,
-            cv=10,
+            cv=5,
             scoring="accuracy",
-            n_jobs=-1
+            verbose=1
         )
 
         grid_search.fit(X, y)
@@ -60,9 +73,10 @@ class TennisKNN:
             ("scaler", StandardScaler())
         ])
 
+        # TODO: add ordinal encoding for tournament level
         cat_pipeline = Pipeline([
             ("imputer", SimpleImputer(strategy="most_frequent")),
-            ("ohe", OneHotEncoder(handle_unknown="ignore", sparse_output=False))
+            ("ohe", OneHotEncoder(handle_unknown="ignore", sparse_output=False)) # ignore unknown categories in test set and keep output as dense matrix
         ])
 
         preprocessor = ColumnTransformer(transformers=[
