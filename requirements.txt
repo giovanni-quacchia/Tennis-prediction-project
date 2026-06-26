@@ -1,6 +1,6 @@
 typer==0.24.1
 rich==15.0.0
-ptdantic==2.13.3
+pydantic==2.13.3
 numpy==2.4.4
 scikit-learn==1.8.0
 scipy==1.17.1

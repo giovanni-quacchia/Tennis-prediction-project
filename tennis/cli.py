@@ -1,14 +1,15 @@
 import typer
 import joblib
 import pandas as pd
-from tennis.models.knn import TennisKNN
-from tennis.models.decision_tree import TennisDecisionTree
+from sklearn.model_selection import train_test_split
 from tennis.data_loader import prepare_data as prepare_data_func
 from tennis.config import DataConfig, TrainingConfig, FeatureConfig
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score
     
 import numpy as np
+from tennis.models.random_forest import TennisRandomForest
+
+from tennis.enums import ModelName, PredictMode
 
 app = typer.Typer()
 
@@ -32,8 +33,7 @@ def test():
 
     # Lista dei modelli da analizzare
     models = {
-        "KNN": config.knn_model_path,
-        "Decision Tree": config.decision_tree_model_path
+        "Random Forest": config.random_forest_model_path
     }
 
     for name, path in models.items():
@@ -74,12 +74,20 @@ def prepare_data():
     typer.echo("Data prepared successfully.")
 
 @app.command()
-def train_knn():
+def train(model: ModelName = typer.Argument(..., help="Model to train")):
 
     config = DataConfig()
-    training_config = TrainingConfig()
-    model = TennisKNN(training_config.knn)
     features = FeatureConfig()
+    training_config = TrainingConfig()
+    
+    if model == ModelName.RANDOM_FOREST:
+        typer.echo("Training Random Forest model...")
+        model_to_train = TennisRandomForest(training_config.random_forest)
+    else:
+        typer.echo(f"Model {model.value} not implemented yet.")
+        raise typer.Exit()
+    
+    # TODO: move this logic outside
 
     df = pd.read_excel(config.prepared_data_path)
 
@@ -89,85 +97,63 @@ def train_knn():
                             random_state=training_config.random_state)
 
     # Train the model and tune hyperparameters
-    typer.echo("Training KNN model...")
-    params, accuracy = model.train(train_set)
+    params, accuracy = model_to_train.train(train_set)
 
     typer.echo(f"Best hyperparameters: {params}")
     typer.echo(f"Training accuracy: {accuracy:.2%}")
 
     # Test the model on the testing set
     X_test, y_test = test_set[features.trainable], test_set["y"]
-    test_accuracy = model.fitted_pipeline.score(X_test, y_test)
+    test_accuracy = model_to_train.fitted_pipeline.score(X_test, y_test)
     typer.echo(f"Testing accuracy: {test_accuracy:.2%}")
 
     typer.echo("Training completed. Saving the model...")
     # Save the model for future tests
-    joblib.dump(model.fitted_pipeline, config.knn_model_path)
+    joblib.dump(model_to_train.fitted_pipeline, config.models_path + f"{model.value}_model.pkl")
 
 @app.command()
-def predict_knn():
-
+def predict(
+    model: ModelName = typer.Argument(..., help="Model to use [random-forest|xgboost|ensemble]"),
+    mode: PredictMode = typer.Option(PredictMode.dataset, help="Prediction mode"),
+    player1: str = typer.Option(None, help="Player 1 name (only for players mode)"),
+    player2: str = typer.Option(None, help="Player 2 name (only for players mode)"),
+):
     config = DataConfig()
     features = FeatureConfig()
 
-    pipeline = joblib.load(config.knn_model_path)
-    
-    # Testing set
-    raw_df = pd.read_excel(config.testing_data_path)
-    testing_set = prepare_data_func(raw_df)
-    X,y = testing_set[features.trainable], testing_set["y"]
+    if mode == PredictMode.dataset:
+        raw_df = pd.read_excel(config.testing_data_path)
+        testing_set = prepare_data_func(raw_df)
+        X, y = testing_set[features.trainable], testing_set["y"]
 
-    predictions = pipeline.predict(X)
+        if model == ModelName.ENSEMBLE:
+            # Load all models and average their predictions
+            pipelines = [
+                joblib.load(config.get_model_path(ModelName.RANDOM_FOREST.value)),
+                # joblib.load(config.get_model_path(ModelName.XGBOOST.value)),
+            ]
+            
+            # for each model: array of probabilities for the first player winning
+            # random-forest: [0.3, 0.6, 0.8]
+            # xgboost:       [0.4, 0.5, 0.9]
+            # Average them:  [0.35, 0.55, 0.85]
+            probs = np.mean([p.predict_proba(X)[:, 1] for p in pipelines], axis=0)
+            predictions = (probs > 0.5).astype(int)
+        else:
+            path = config.get_model_path(model.value)
+            pipeline = joblib.load(path)
+            predictions = pipeline.predict(X)
 
-    accuracy = (predictions == y).mean()
-    print("Test Accuracy:", f"{accuracy:.2%}")
+        accuracy = (predictions == y).mean()
+        print(f"Test Accuracy: {accuracy:.2%}")
 
+    elif mode == PredictMode.players:
+        if not player1 or not player2:
+            typer.echo("You must specify --player1 and --player2", err=True)
+            raise typer.Exit(1)
+        
 
-@app.command()
-def train_decision_tree():
-
-    config = DataConfig()
-    training_config = TrainingConfig()
-    model = TennisDecisionTree(training_config.decision_tree)
-    features = FeatureConfig()
-
-    df = pd.read_excel(config.prepared_data_path)
-
-    # Split the data into training and testing sets
-    train_set, test_set = train_test_split(df, 
-                            test_size=training_config.test_size, 
-                            random_state=training_config.random_state)
-
-    # Train the model and tune hyperparameters
-    typer.echo("Training Decision Tree model...")
-    params, accuracy = model.train(train_set)
-
-    typer.echo(f"Best hyperparameters: {params}")
-    typer.echo(f"Training accuracy: {accuracy:.2%}")
-
-    # Test the model on the testing set
-    X_test, y_test = test_set[features.trainable], test_set["y"]
-    test_accuracy = model.fitted_pipeline.score(X_test, y_test)
-    typer.echo(f"Testing accuracy: {test_accuracy:.2%}")
-
-    typer.echo("Training completed. Saving the model...")
-    # Save the model for future tests
-    joblib.dump(model.fitted_pipeline, "tennis/models/decision_tree_model.pkl")
-
-@app.command()
-def predict_decision_tree():
-
-    config = DataConfig()
-    features = FeatureConfig()
-
-    pipeline = joblib.load(config.decision_tree_model_path)
-    
-    # Testing set
-    raw_df = pd.read_excel(config.testing_data_path)
-    testing_set = prepare_data_func(raw_df)
-    X,y = testing_set[features.trainable], testing_set["y"]
-
-    predictions = pipeline.predict(X)
-
-    accuracy = (predictions == y).mean()
-    print("Test Accuracy:", f"{accuracy:.2%}")
+        typer.echo(f"{player1} vs {player2}")
+        # X = build_matchup(player1, player2)
+        # prediction = pipeline.predict(X)
+        typer.echo("Player mode not yet implemented")
