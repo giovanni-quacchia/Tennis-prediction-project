@@ -62,12 +62,24 @@ class RandomForestConfig(BaseModel):
     min_samples_split: int = 2
     min_samples_leaf: int = 1
     criterion: str = "gini"
-    random_state: int = 42 
+    random_state: int = 42
     bootstrap: bool = True
+    max_features: str | None = "sqrt"
+    n_jobs: int = 1
+
+# Configuration for cross-validation and hyperparameters fine-tuning
+class SearchConfig(BaseModel):
+    n_iter: int = 50
+    cv: int = 5
+    scoring: str = "accuracy"
+    n_jobs: int = -1            # Use all available cores for parallel processing
+    random_state: int = 42
+    verbose: int = 1
 
 class TrainingConfig(BaseModel):
     test_size: float = 0.3
     random_state: int = 42
 
+    search: SearchConfig = SearchConfig()
     random_forest: RandomForestConfig = RandomForestConfig()
 

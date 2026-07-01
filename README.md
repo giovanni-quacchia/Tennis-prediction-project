@@ -1,13 +1,25 @@
 # tennis_prediction
 
-Tennis prediction project for a university course
+Tennis prediction project for Artificial Intelligence course at University of Venice 2025/2026.
 
-Testing different machine learning models algorithm: Random forest, XGBoost
+Testing different machine learning models algorithms: Random forest, XGBoost
 
 ## Commands
 
 ```bash
 python3 -m tennis <CMD> # -m runs module as a script
+```
+
+### Train a model
+
+```bash
+python3 -m tennis train random-forest | xgboost
+```
+
+### Predict a match
+
+```bash
+python3 -m tennis predict random-forest | xgboost --p1 <player_1> --p2 <player_2>
 ```
 
 ## General info

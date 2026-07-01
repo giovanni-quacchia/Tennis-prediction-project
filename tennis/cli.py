@@ -1,15 +1,22 @@
 import typer
 import joblib
+import numpy as np
 import pandas as pd
-from sklearn.model_selection import train_test_split
-from tennis.data_loader import prepare_data as prepare_data_func
+from pathlib import Path
+from tennis.data_loader import load_temporal_train_test_split, prepare_data as prepare_data_func
 from tennis.config import DataConfig, TrainingConfig, FeatureConfig
 from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score
     
-import numpy as np
-from tennis.models.random_forest import TennisRandomForest
 
 from tennis.enums import ModelName, PredictMode
+
+from tennis.models.factory import build_model
+
+from tennis.training import (
+    evaluate_model,
+    print_training_results,
+    save_model,
+)
 
 app = typer.Typer()
 
@@ -20,10 +27,16 @@ def test():
     features = FeatureConfig()
 
     df = pd.read_excel(config.prepared_data_path)
+    
+    # sort data to train on past matches and test on future matches
+    df = df.sort_values(by="Date")
+    
+    # where split df
+    # e.g. df with 10 matches, test_size=0.3 --> split_index = 10 * 0.7 = 7
+    split_index = int(len(df) * (1 - training_config.test_size))
 
-    train_set, test_set = train_test_split(df, 
-                            test_size=training_config.test_size, 
-                            random_state=training_config.random_state)
+    train_set = df.iloc[:split_index]
+    test_set = df.iloc[split_index:]
 
     # Naive baseline
     baseline_accuracy = test_set["y"].value_counts().max() / test_set["y"].value_counts().sum()
@@ -33,7 +46,9 @@ def test():
 
     # Lista dei modelli da analizzare
     models = {
-        "Random Forest": config.random_forest_model_path
+        "Random Forest": config.get_model_path(
+            ModelName.RANDOM_FOREST.value
+        )
     }
 
     for name, path in models.items():
@@ -73,43 +88,45 @@ def prepare_data():
     df.to_excel(config.prepared_data_path, index=False)
     typer.echo("Data prepared successfully.")
 
-@app.command()
-def train(model: ModelName = typer.Argument(..., help="Model to train")):
 
+@app.command()
+def train(
+    model: ModelName = typer.Argument(
+        ..., # no default value, required argument
+        help="Model to train",
+    )
+):
     config = DataConfig()
     features = FeatureConfig()
     training_config = TrainingConfig()
-    
-    if model == ModelName.RANDOM_FOREST:
-        typer.echo("Training Random Forest model...")
-        model_to_train = TennisRandomForest(training_config.random_forest)
-    else:
-        typer.echo(f"Model {model.value} not implemented yet.")
-        raise typer.Exit()
-    
-    # TODO: move this logic outside
 
-    df = pd.read_excel(config.prepared_data_path)
+    typer.echo(f"Training {model.value} model...")
 
-    # Split the data into training and testing sets
-    train_set, test_set = train_test_split(df, 
-                            test_size=training_config.test_size, 
-                            random_state=training_config.random_state)
+    train_set, test_set = load_temporal_train_test_split(
+        path=config.prepared_data_path,
+        test_size=training_config.test_size,
+    )
 
-    # Train the model and tune hyperparameters
-    params, accuracy = model_to_train.train(train_set)
+    model_to_train = build_model(model, training_config)
 
-    typer.echo(f"Best hyperparameters: {params}")
-    typer.echo(f"Training accuracy: {accuracy:.2%}")
+    best_params, cv_accuracy = model_to_train.train(train_set)
 
-    # Test the model on the testing set
-    X_test, y_test = test_set[features.trainable], test_set["y"]
-    test_accuracy = model_to_train.fitted_pipeline.score(X_test, y_test)
-    typer.echo(f"Testing accuracy: {test_accuracy:.2%}")
+    test_accuracy = evaluate_model(
+        model=model_to_train,
+        test_set=test_set,
+        features=features,
+    )
 
-    typer.echo("Training completed. Saving the model...")
-    # Save the model for future tests
-    joblib.dump(model_to_train.fitted_pipeline, config.models_path + f"{model.value}_model.pkl")
+    print_training_results(
+        best_params=best_params,
+        cv_accuracy=cv_accuracy,
+        test_accuracy=test_accuracy,
+    )
+
+    save_model(
+        model=model_to_train,
+        model_path=config.get_model_path(model.value),
+    )
 
 @app.command()
 def predict(

@@ -1,15 +1,24 @@
 import pandas as pd, numpy as np
-from sklearn.model_selection import train_test_split
-from tennis.config import DataConfig, FeatureConfig
-
-from sklearn.impute import SimpleImputer
-from sklearn.compose import ColumnTransformer
-from sklearn.preprocessing import StandardScaler, OneHotEncoder
-from sklearn.pipeline import Pipeline
-
 from tennis.config import FeatureConfig
 
 # https://www.pecan.ai/blog/data-preparation-for-machine-learning/
+
+def load_temporal_train_test_split(path: str, test_size):
+    df = pd.read_excel(path)
+    
+    # sort data to train on past matches and test on future matches
+    df["Date"] = pd.to_datetime(df["Date"]) #  convert to datetime (excel may store dates as strings)
+    df = df.sort_values("Date")
+
+    # where split df
+    # e.g. df with 10 matches, test_size=0.3 --> split_index = 10 * 0.7 = 7
+    split_index = int(len(df) * (1 - test_size))
+
+    # iloc (integer location) select rows
+    train_set = df.iloc[:split_index]
+    test_set = df.iloc[split_index:]
+
+    return train_set, test_set
 
 """
 Shape: (2644, 38)
@@ -57,30 +66,3 @@ def random_swap(df):
         df.loc[swap_mask, col] = df.loc[swap_mask, col] * -1 # Invert difference for swapped rows
 
     df.loc[swap_mask, "y"] = 0 # P2 wins
-
-def preprocess_data(X_train, X_test, y_train, y_test, scale=True):
-    features = FeatureConfig()
-
-    num_steps = [("imputer", SimpleImputer(strategy="median"))]
-    if scale: num_steps.append(("scaler", StandardScaler()))   
-    
-    preprocessor = ColumnTransformer(transformers=[
-        ("num", Pipeline(num_steps, features.numeric)),
-        ("cat", Pipeline([
-            ("imputer", SimpleImputer(strategy="most_frequent")),
-            # One-hot encode categorical variables
-            # Column_value: Boolean for each category
-            ("ohe", OneHotEncoder(handle_unknown="ignore", sparse_output=False))
-        ]), features.categorical),
-    ], 
-    remainder="passthrough", # keep P1, P2 wihtout transformation
-    verbose_feature_names_out=False # don't change column names after transformation
-    ) 
-    
-    preprocessor.set_output(transform="pandas")
-
-    # Don't learn from test data, only transform it
-    X_train_final = preprocessor.fit_transform(X_train)
-    X_test_final = preprocessor.transform(X_test)
-
-    return X_train_final, X_test_final, y_train, y_test
