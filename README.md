@@ -2,12 +2,12 @@
 
 Tennis prediction project for a university course
 
-Testing different machine learning models algorithm: KNN, Decision trees
+Testing different machine learning models algorithm: Random forest, XGBoost
 
 ## Commands
 
 ```bash
-python3 -m tennis.py <CMD> # -m runs module as a script
+python3 -m tennis <CMD> # -m runs module as a script
 ```
 
 ## General info
