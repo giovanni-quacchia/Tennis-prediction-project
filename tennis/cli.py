@@ -1,9 +1,9 @@
+from xml.parsers.expat import model
+
 import typer
 import joblib
 import numpy as np
 import pandas as pd
-from pathlib import Path
-from tennis.data_loader import load_temporal_train_test_split, prepare_data as prepare_data_func
 from tennis.config import DataConfig, TrainingConfig, FeatureConfig
 from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score
     
@@ -11,6 +11,15 @@ from sklearn.metrics import classification_report, confusion_matrix, roc_auc_sco
 from tennis.enums import ModelName, PredictMode
 
 from tennis.models.factory import build_model
+
+from tennis.data_loader import (
+    EloState,
+    load_elo_state,
+    load_temporal_train_test_split,
+    prepare_data as prepare_data_func,
+    save_elo_state,
+    read_dataframe
+)
 
 from tennis.training import (
     evaluate_model,
@@ -22,70 +31,169 @@ app = typer.Typer()
 
 @app.command()
 def test():
+    from sklearn.metrics import (
+        accuracy_score,
+        balanced_accuracy_score,
+        brier_score_loss,
+        classification_report,
+        confusion_matrix,
+        f1_score,
+        log_loss,
+        precision_score,
+        recall_score,
+        roc_auc_score,
+    )
+
     config = DataConfig()
-    training_config = TrainingConfig()
     features = FeatureConfig()
 
-    df = pd.read_excel(config.prepared_data_path)
-    
-    # sort data to train on past matches and test on future matches
-    df = df.sort_values(by="Date")
-    
-    # where split df
-    # e.g. df with 10 matches, test_size=0.3 --> split_index = 10 * 0.7 = 7
-    split_index = int(len(df) * (1 - training_config.test_size))
+    raw_df = read_dataframe(config.testing_data_path)
+    test_dates = pd.to_datetime(raw_df["Date"], errors="coerce")
 
-    train_set = df.iloc[:split_index]
-    test_set = df.iloc[split_index:]
+    if test_dates.isna().any():
+        raise ValueError("Testing data contains invalid dates")
 
-    # Naive baseline
-    baseline_accuracy = test_set["y"].value_counts().max() / test_set["y"].value_counts().sum()
-    print("Majority class accuracy", f"{baseline_accuracy:.2%}")
+    elo_state = load_elo_state(config.elo_state_path)
 
-    X_test, y_test = test_set[features.trainable], test_set["y"]
-
-    # Lista dei modelli da analizzare
-    models = {
-        "Random Forest": config.get_model_path(
-            ModelName.RANDOM_FOREST.value
+    if elo_state.last_processed_date is None:
+        raise ValueError(
+            "The Elo state does not contain a last processed date"
         )
-    }
 
-    for name, path in models.items():
-        try:
-            pipeline = joblib.load(path)
-            y_pred = pipeline.predict(X_test)
-            
-            print(f"\n--- ANALYSIS: {name} ---")
-            
-            # 2. Classification Report (Precision, Recall, F1)
-            print("Classification Report:")
-            print(classification_report(y_test, y_pred))
-            
-            # 3. Confusion Matrix
-            cm = confusion_matrix(y_test, y_pred)
-            print("Confusion Matrix:")
-            print(cm)
-            
-            # 4. ROC AUC Score (richiede le probabilità)
-            if hasattr(pipeline, "predict_proba"):
-                y_probs = pipeline.predict_proba(X_test)[:, 1]
-                auc = roc_auc_score(y_test, y_probs)
-                print(f"ROC AUC Score: {auc:.4f}")
-                
-        except Exception as e:
-            print(f"Could not analyze {name}: {e}")
+    history_end = pd.Timestamp(elo_state.last_processed_date)
+    test_start = test_dates.min()
+
+    if test_start <= history_end:
+        raise ValueError(
+            "Testing data must start after the Elo history"
+        )
+
+    testing_set = prepare_data_func(
+        raw_df,
+        elo_state=elo_state,
+    )
+
+    X_test = testing_set[features.trainable]
+    y_test = testing_set["y"]
+
+    model_path = config.get_model_path(
+        ModelName.RANDOM_FOREST.value
+    )
+    pipeline = joblib.load(model_path)
+
+    y_probability = pipeline.predict_proba(X_test)[:, 1]
+    y_prediction = (y_probability >= 0.5).astype(int)
+
+    majority_accuracy = y_test.value_counts(normalize=True).max()
+
+    odds_1 = pd.to_numeric(raw_df["Odd_1"], errors="coerce")
+    odds_2 = pd.to_numeric(raw_df["Odd_2"], errors="coerce")
+    valid_odds = odds_1.gt(0) & odds_2.gt(0)
+    player_1_won = raw_df["Winner"].eq(raw_df["Player_1"])
+    odds_prediction = odds_1.lt(odds_2)
+    odds_accuracy = accuracy_score(
+        player_1_won[valid_odds],
+        odds_prediction[valid_odds],
+    )
+
+    elo_prediction = (
+        testing_set["Elo_Diff"] >= 0
+    ).astype(int)
+
+    typer.echo("\n--- TEST DATASET ---")
+    typer.echo(f"Matches: {len(testing_set)}")
+    typer.echo(
+        f"Period: {test_dates.min().date()} to "
+        f"{test_dates.max().date()}"
+    )
+    typer.echo(f"Positive class: {y_test.mean():.2%}")
+
+    typer.echo("\n--- BASELINES ---")
+    typer.echo(f"Majority accuracy: {majority_accuracy:.2%}")
+    typer.echo(
+        "Odds accuracy: "
+        f"{odds_accuracy:.2%} "
+        f"({valid_odds.sum()}/{len(raw_df)} matches)"
+    )
+    typer.echo(
+        "Elo accuracy: "
+        f"{accuracy_score(y_test, elo_prediction):.2%}"
+    )
+
+    typer.echo("\n--- RANDOM FOREST ---")
+    typer.echo(
+        f"Accuracy: {accuracy_score(y_test, y_prediction):.2%}"
+    )
+    typer.echo(
+        "Balanced accuracy: "
+        f"{balanced_accuracy_score(y_test, y_prediction):.2%}"
+    )
+    typer.echo(
+        f"Precision: {precision_score(y_test, y_prediction):.2%}"
+    )
+    typer.echo(
+        f"Recall: {recall_score(y_test, y_prediction):.2%}"
+    )
+    typer.echo(f"F1 score: {f1_score(y_test, y_prediction):.2%}")
+    typer.echo(f"ROC AUC: {roc_auc_score(y_test, y_probability):.4f}")
+    typer.echo(f"Log loss: {log_loss(y_test, y_probability):.4f}")
+    typer.echo(
+        f"Brier score: {brier_score_loss(y_test, y_probability):.4f}"
+    )
+
+    typer.echo("\nClassification report:")
+    typer.echo(
+        classification_report(
+            y_test,
+            y_prediction,
+            digits=4,
+            zero_division=0,
+        )
+    )
+
+    matrix = confusion_matrix(y_test, y_prediction)
+    typer.echo("Confusion matrix [[TN, FP], [FN, TP]]:")
+    typer.echo(str(matrix))
     
 
 @app.command()
 def prepare_data():
     config = DataConfig()
 
-    raw_df = pd.read_excel(config.raw_data_path)
-    df = prepare_data_func(raw_df)
+    raw_df = read_dataframe(config.raw_data_path)
+    
+    raw_df["Date"] = pd.to_datetime(
+        raw_df["Date"],
+        errors="coerce",
+    )
+    
+    history_end = pd.Timestamp(
+        config.history_end_date
+    )
+    
+    historical_df = raw_df[
+        raw_df["Date"] <= history_end
+    ].copy()
+
+    elo_state = EloState()
+
+    df = prepare_data_func( 
+        historical_df,
+        elo_state=elo_state,
+    )
+
     print(df.head())
 
-    df.to_excel(config.prepared_data_path, index=False)
+    df.to_excel(
+        config.prepared_data_path,
+        index=False,
+    )
+
+    save_elo_state(
+        elo_state,
+        config.elo_state_path,
+    )
+    
     typer.echo("Data prepared successfully.")
 
 
@@ -104,6 +212,8 @@ def train(
 
     train_set, test_set = load_temporal_train_test_split(
         path=config.prepared_data_path,
+        min_date=config.min_training_date,
+        max_date=config.max_training_date,
         test_size=training_config.test_size,
     )
 
@@ -139,10 +249,50 @@ def predict(
     features = FeatureConfig()
 
     if mode == PredictMode.dataset:
-        raw_df = pd.read_excel(config.testing_data_path)
-        testing_set = prepare_data_func(raw_df)
-        X, y = testing_set[features.trainable], testing_set["y"]
+        
+        raw_df = pd.read_csv(
+            config.testing_data_path
+        )
 
+        elo_state = load_elo_state(
+            config.elo_state_path
+        )
+        
+        test_dates = pd.to_datetime(
+            raw_df["Date"],
+            errors="coerce",
+        )
+
+        if test_dates.isna().any():
+            raise ValueError(
+                "Testing data contains invalid dates"
+            )
+
+        if elo_state.last_processed_date is None:
+            raise ValueError(
+                "The Elo state does not contain "
+                "a last processed date"
+            )
+
+        test_min_date = test_dates.min()
+        history_end = pd.Timestamp(
+            elo_state.last_processed_date
+        )
+
+        if test_min_date <= history_end:
+            raise ValueError(
+                "Testing data must start after "
+                "the Elo history"
+            )
+
+        testing_set = prepare_data_func(
+            raw_df,
+            elo_state=elo_state,
+        )
+        
+        X = testing_set[features.trainable]
+        y = testing_set["y"]
+        
         if model == ModelName.ENSEMBLE:
             # Load all models and average their predictions
             pipelines = [

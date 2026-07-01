@@ -4,15 +4,20 @@ class DataConfig(BaseModel):
     model_config = ConfigDict(extra="ignore")
     
     # https://www.kaggle.com/datasets/dissfya/atp-tennis-2000-2023daily-pull/data
-    raw_data_path      : str | None = "data/raw/tennis.xlsx"
-    prepared_data_path : str | None = "data/prepared/tennis_prepared.xlsx"
-    testing_data_path  : str | None = "data/testing/tennis_testing.xlsx"
+    raw_data_path      : str = "data/raw/atp_tennis.csv"
+    prepared_data_path : str = "data/prepared/tennis_prepared.xlsx"
+    testing_data_path  : str = "data/testing/atp_tennis_2026_testing.csv"
 
-    models_path        : str | None = "models/"
+    models_path        : str = "models/"
+    
+    elo_state_path     : str = "data/prepared/elo_state.json"
 
     # start-end date for training data
-    min_date           : str = "2004-01-01"
-    train_cutoff_date  : str = "2025-04-14"
+    min_training_date           : str = "2006-01-01"
+    max_training_date           : str = "2025-12-31"
+    
+    # end date for historical data used to compute Elo ratings
+    history_end_date            : str = "2025-12-31" 
 
     epsilon            : float = 0.001
     
@@ -22,22 +27,26 @@ class DataConfig(BaseModel):
 # http://www.tennis-data.co.uk/notes.txt
 class FeatureConfig(BaseModel):
     raw: list[str] = [
-        "WRank", "LRank",       # Ranking
-        "WPts", "LPts",         # Entry points 
-        "B365W", "B365L",       # Bets
-        "PSW", "PSL",
-        "MaxW", "MaxL",
-        "AvgW", "AvgL",
-        "Court", "Surface",     # Categories with natural order
-        "Winner", "Loser",      # Players
-        "Date"
+        "WRank",
+        "LRank",
+        "WPts",
+        "LPts",
+        "WinnerOdds",
+        "LoserOdds",
+        "Court",
+        "Surface",
+        "Winner",
+        "Loser",
+        "Date",
     ]
 
     numeric: list[str] = [
-        "Rank_Diff", "Pts_Diff",
-        "B365_Bet_Diff", "PS_Bet_Diff", "Max_Bet_Diff", "Avg_Bet_Diff"
+        "Rank_Diff",
+        "Pts_Diff",
+        "Odds_Prob_Diff",
+        "Elo_Diff", "Surface_Elo_Diff", # ELO features
     ]
-
+    
     categorical: list[str] = [
         "Court", "Surface"
     ]
@@ -48,6 +57,10 @@ class FeatureConfig(BaseModel):
         "Winner", "Loser",       # Players after random swap
         "Date"
     ]
+    
+class EloConfig(BaseModel):
+    initial_rating: float = 1500.0
+    k_factor: float = 32.0
 
 """
 Learning algorithms with tuned hyperparameters:
@@ -82,4 +95,3 @@ class TrainingConfig(BaseModel):
 
     search: SearchConfig = SearchConfig()
     random_forest: RandomForestConfig = RandomForestConfig()
-

@@ -5,7 +5,6 @@ from sklearn.impute import SimpleImputer
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder
 
-
 def build_tree_preprocessor(features):
     
     # numerical features: impute missing values with median and add indicator for missing values
@@ -15,6 +14,7 @@ def build_tree_preprocessor(features):
             SimpleImputer(
                 strategy="median",
                 add_indicator=True,
+                keep_empty_features=True # set 0 for missing values in the indicator column
             ),
         ),
     ])
