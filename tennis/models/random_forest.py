@@ -20,6 +20,13 @@ class TennisRandomForest(BaseModel):
             "model__criterion": ["gini", "entropy"],
             "model__bootstrap": [True, False],
             "model__max_features": ["sqrt", "log2", None],
+            "preprocessor__high_cardinality_cat__onehot__max_categories": [
+                5,
+                10,
+                15,
+                20,
+                30,
+            ],
         }
     
     def __init__(

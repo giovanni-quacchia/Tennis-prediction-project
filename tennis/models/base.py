@@ -35,8 +35,11 @@ class BaseModel(ABC):
             estimator=pipeline,
             param_distributions=self.param_distributions,
             # TimeSeriesSplit for cross-validation to respect data temporal order
-            cv=TimeSeriesSplit(n_splits=self.search_config.cv),     
+            cv=TimeSeriesSplit(
+                n_splits=self.search_config.cv
+            ),     
             refit=True,             # refit the best model on the whole dataset after search
+            error_score="raise",    # raise error if any error occurs during fitting
             **search_params         # **: unpack dictionary as keyword arguments:  k1=v1, k2=v2, ...
         )
 

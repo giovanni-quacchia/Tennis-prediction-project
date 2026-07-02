@@ -1,12 +1,9 @@
-from xml.parsers.expat import model
-
 import typer
 import joblib
 import numpy as np
 import pandas as pd
-from tennis.config import DataConfig, TrainingConfig, FeatureConfig
-from sklearn.metrics import classification_report, confusion_matrix, roc_auc_score
-    
+from pathlib import Path
+from tennis.config import DataConfig, TrainingConfig, FeatureConfig    
 
 from tennis.enums import ModelName, PredictMode
 
@@ -14,18 +11,14 @@ from tennis.models.factory import build_model
 
 from tennis.data_loader import (
     EloState,
+    create_temporal_train_test_split,
     load_elo_state,
-    load_temporal_train_test_split,
     prepare_data as prepare_data_func,
     save_elo_state,
     read_dataframe
 )
 
-from tennis.training import (
-    evaluate_model,
-    print_training_results,
-    save_model,
-)
+from tennis.training import save_model
 
 app = typer.Typer()
 
@@ -33,21 +26,15 @@ app = typer.Typer()
 def test():
     from sklearn.metrics import (
         accuracy_score,
-        balanced_accuracy_score,
         brier_score_loss,
-        classification_report,
-        confusion_matrix,
-        f1_score,
         log_loss,
-        precision_score,
-        recall_score,
         roc_auc_score,
     )
 
     config = DataConfig()
     features = FeatureConfig()
 
-    raw_df = read_dataframe(config.testing_data_path)
+    raw_df = read_dataframe(config.raw_testing_data_path)
     test_dates = pd.to_datetime(raw_df["Date"], errors="coerce")
 
     if test_dates.isna().any():
@@ -61,9 +48,8 @@ def test():
         )
 
     history_end = pd.Timestamp(elo_state.last_processed_date)
-    test_start = test_dates.min()
 
-    if test_start <= history_end:
+    if test_dates.min() <= history_end:
         raise ValueError(
             "Testing data must start after the Elo history"
         )
@@ -72,33 +58,69 @@ def test():
         raw_df,
         elo_state=elo_state,
     )
-
     X_test = testing_set[features.trainable]
     y_test = testing_set["y"]
 
-    model_path = config.get_model_path(
-        ModelName.RANDOM_FOREST.value
+    model_names = (
+        ModelName.RANDOM_FOREST,
+        ModelName.XGBOOST,
     )
-    pipeline = joblib.load(model_path)
+    pipelines = {}
+    for model_name in model_names:
+        try:
+            pipelines[model_name] = joblib.load(
+                config.get_model_path(model_name.value)
+            )
+        except (AttributeError, FileNotFoundError) as error:
+            typer.echo(
+                f"Skipping {model_name.value}: {error}"
+            )
 
-    y_probability = pipeline.predict_proba(X_test)[:, 1]
-    y_prediction = (y_probability >= 0.5).astype(int)
-
-    majority_accuracy = y_test.value_counts(normalize=True).max()
+    if not pipelines:
+        raise RuntimeError("No compatible trained models found")
+    model_probabilities = {
+        model_name: pipeline.predict_proba(X_test)[:, 1]
+        for model_name, pipeline in pipelines.items()
+    }
+    global_elo_probability = 1 / (
+        1 + 10 ** (-testing_set["Elo_Diff"] / 400)
+    )
+    surface_elo_probability = 1 / (
+        1 + 10 ** (-testing_set["Surface_Elo_Diff"] / 400)
+    )
 
     odds_1 = pd.to_numeric(raw_df["Odd_1"], errors="coerce")
     odds_2 = pd.to_numeric(raw_df["Odd_2"], errors="coerce")
     valid_odds = odds_1.gt(0) & odds_2.gt(0)
-    player_1_won = raw_df["Winner"].eq(raw_df["Player_1"])
-    odds_prediction = odds_1.lt(odds_2)
-    odds_accuracy = accuracy_score(
-        player_1_won[valid_odds],
-        odds_prediction[valid_odds],
+    odds_1_inverse = 1 / odds_1[valid_odds]
+    odds_2_inverse = 1 / odds_2[valid_odds]
+    bookmaker_probability = odds_1_inverse / (
+        odds_1_inverse + odds_2_inverse
     )
-
-    elo_prediction = (
-        testing_set["Elo_Diff"] >= 0
+    bookmaker_target = raw_df.loc[valid_odds, "Winner"].eq(
+        raw_df.loc[valid_odds, "Player_1"]
     ).astype(int)
+
+    def print_metrics(
+        name: str,
+        target: pd.Series,
+        probability: pd.Series | np.ndarray,
+    ) -> None:
+        prediction = (np.asarray(probability) >= 0.5).astype(int)
+        typer.echo(f"\n{name}:")
+        typer.echo(
+            f"  Accuracy: {accuracy_score(target, prediction):.2%}"
+        )
+        typer.echo(
+            f"  ROC AUC: {roc_auc_score(target, probability):.4f}"
+        )
+        typer.echo(
+            f"  Log loss: {log_loss(target, probability):.4f}"
+        )
+        typer.echo(
+            "  Brier score: "
+            f"{brier_score_loss(target, probability):.4f}"
+        )
 
     typer.echo("\n--- TEST DATASET ---")
     typer.echo(f"Matches: {len(testing_set)}")
@@ -106,86 +128,85 @@ def test():
         f"Period: {test_dates.min().date()} to "
         f"{test_dates.max().date()}"
     )
-    typer.echo(f"Positive class: {y_test.mean():.2%}")
-
-    typer.echo("\n--- BASELINES ---")
-    typer.echo(f"Majority accuracy: {majority_accuracy:.2%}")
-    typer.echo(
-        "Odds accuracy: "
-        f"{odds_accuracy:.2%} "
-        f"({valid_odds.sum()}/{len(raw_df)} matches)"
+    typer.echo("\n--- MODEL COMPARISON ---")
+    print_metrics(
+        "Bookmaker",
+        bookmaker_target,
+        bookmaker_probability,
     )
-    typer.echo(
-        "Elo accuracy: "
-        f"{accuracy_score(y_test, elo_prediction):.2%}"
+    print_metrics("Global Elo", y_test, global_elo_probability)
+    print_metrics(
+        "Surface Elo",
+        y_test,
+        surface_elo_probability,
     )
-
-    typer.echo("\n--- RANDOM FOREST ---")
-    typer.echo(
-        f"Accuracy: {accuracy_score(y_test, y_prediction):.2%}"
-    )
-    typer.echo(
-        "Balanced accuracy: "
-        f"{balanced_accuracy_score(y_test, y_prediction):.2%}"
-    )
-    typer.echo(
-        f"Precision: {precision_score(y_test, y_prediction):.2%}"
-    )
-    typer.echo(
-        f"Recall: {recall_score(y_test, y_prediction):.2%}"
-    )
-    typer.echo(f"F1 score: {f1_score(y_test, y_prediction):.2%}")
-    typer.echo(f"ROC AUC: {roc_auc_score(y_test, y_probability):.4f}")
-    typer.echo(f"Log loss: {log_loss(y_test, y_probability):.4f}")
-    typer.echo(
-        f"Brier score: {brier_score_loss(y_test, y_probability):.4f}"
-    )
-
-    typer.echo("\nClassification report:")
-    typer.echo(
-        classification_report(
+    for model_name in pipelines:
+        print_metrics(
+            model_name.value,
             y_test,
-            y_prediction,
-            digits=4,
-            zero_division=0,
+            model_probabilities[model_name],
         )
-    )
 
-    matrix = confusion_matrix(y_test, y_prediction)
-    typer.echo("Confusion matrix [[TN, FP], [FN, TP]]:")
-    typer.echo(str(matrix))
+    for model_name, pipeline in pipelines.items():
+        preprocessor = pipeline.named_steps["preprocessor"]
+        estimator = pipeline.named_steps["model"]
+        feature_names = preprocessor.get_feature_names_out()
+
+        typer.echo(
+            f"\n--- {model_name.value.upper()} "
+            "FEATURE IMPORTANCE ---"
+        )
+        for feature_name, impact in sorted(
+            zip(feature_names, estimator.feature_importances_),
+            key=lambda item: item[1],
+            reverse=True,
+        )[:10]:
+            typer.echo(f"{feature_name}: {impact:.4f}")
+
+@app.command()
+def split_data():
+    config = DataConfig()
+    training_config = TrainingConfig()
     
+    training_set, testing_set = create_temporal_train_test_split(
+        src_path=config.raw_data_path,
+        training_path=config.raw_training_data_path,
+        testing_path=config.raw_testing_data_path,
+        min_date=config.min_date,
+        max_date=config.max_date,
+        test_size=training_config.test_size,
+    )
+    
+    typer.echo(f"Training matches: {len(training_set)}")
+    typer.echo(f"Testing matches: {len(testing_set)}")
+    typer.echo(
+        f"Split date: {testing_set['Date'].min().date()}"
+    )
 
 @app.command()
 def prepare_data():
     config = DataConfig()
 
-    raw_df = read_dataframe(config.raw_data_path)
-    
-    raw_df["Date"] = pd.to_datetime(
-        raw_df["Date"],
-        errors="coerce",
+    raw_df = read_dataframe(
+        config.raw_training_data_path
     )
-    
-    history_end = pd.Timestamp(
-        config.history_end_date
-    )
-    
-    historical_df = raw_df[
-        raw_df["Date"] <= history_end
-    ].copy()
 
     elo_state = EloState()
 
-    df = prepare_data_func( 
-        historical_df,
+    df = prepare_data_func(
+        raw_df,
         elo_state=elo_state,
     )
 
     print(df.head())
 
-    df.to_excel(
-        config.prepared_data_path,
+    prepared_path = config.prepared_training_data_path
+    Path(prepared_path).parent.mkdir(
+        parents=True,
+        exist_ok=True,
+    )
+    df.to_csv(
+        prepared_path,
         index=False,
     )
 
@@ -210,27 +231,42 @@ def train(
 
     typer.echo(f"Training {model.value} model...")
 
-    train_set, test_set = load_temporal_train_test_split(
-        path=config.prepared_data_path,
-        min_date=config.min_training_date,
-        max_date=config.max_training_date,
-        test_size=training_config.test_size,
+    training_set = read_dataframe(
+        config.prepared_training_data_path
+    )
+    training_set["Date"] = pd.to_datetime(
+        training_set["Date"],
+        errors="raise",
+    )
+    training_set = training_set.sort_values(
+        "Date",
+        kind="stable",
     )
 
     model_to_train = build_model(model, training_config)
 
-    best_params, cv_accuracy = model_to_train.train(train_set)
-
-    test_accuracy = evaluate_model(
-        model=model_to_train,
-        test_set=test_set,
-        features=features,
+    best_params, best_cv_score = model_to_train.train(
+        training_set
     )
+    
+    scoring = training_config.search.scoring
 
-    print_training_results(
-        best_params=best_params,
-        cv_accuracy=cv_accuracy,
-        test_accuracy=test_accuracy,
+    if scoring == "neg_log_loss":
+        metric_name = "log loss"
+        metric_value = -best_cv_score
+        formatted_value = f"{metric_value:.4f}"
+    elif scoring == "accuracy":
+        metric_name = "accuracy"
+        metric_value = best_cv_score
+        formatted_value = f"{metric_value:.2%}"
+    else:
+        metric_name = scoring
+        metric_value = best_cv_score
+        formatted_value = f"{metric_value:.4f}"
+
+    typer.echo(f"Best hyperparameters: {best_params}")
+    typer.echo(
+        f"Cross-validation {metric_name}: {formatted_value}"
     )
 
     save_model(
@@ -250,8 +286,8 @@ def predict(
 
     if mode == PredictMode.dataset:
         
-        raw_df = pd.read_csv(
-            config.testing_data_path
+        raw_df = read_dataframe(
+            config.raw_testing_data_path
         )
 
         elo_state = load_elo_state(

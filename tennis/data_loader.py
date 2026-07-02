@@ -2,12 +2,14 @@ import json
 from pathlib import Path
 from dataclasses import dataclass, field
 
-from sklearn.model_selection import train_test_split
-
 import numpy as np
 import pandas as pd
 
-from tennis.config import EloConfig, FeatureConfig
+from tennis.config import (
+    DataConfig,
+    EloConfig, 
+    FeatureConfig,
+)
 
 # Read dataframe from CSV or Excel file
 def read_dataframe(path: str) -> pd.DataFrame:
@@ -22,72 +24,70 @@ def read_dataframe(path: str) -> pd.DataFrame:
     raise ValueError(f"Unsupported file format: {suffix}")
 
 # https://www.pecan.ai/blog/data-preparation-for-machine-learning/
-def load_temporal_train_test_split(path: str, min_date: str, max_date: str, test_size: float = 0.3):
+def create_temporal_train_test_split(
+    src_path: str,
+    training_path: str,
+    testing_path: str,
+    min_date: str,
+    max_date: str,
+    test_size: float = 0.2,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
     
-    df = pd.read_excel(path)
+    if not 0 < test_size < 1:
+        raise ValueError("test_size must be between 0 and 1")
+    
+    df = read_dataframe(src_path)
     
     # sort data to train on past matches and test on future matches
-    df["Date"] = pd.to_datetime(df["Date"]) #  convert to datetime (excel may store dates as strings)
-    df = df.sort_values("Date")
+    # convert to datetime (excel may store dates as strings)
+    if "Date" not in df.columns:
+        raise ValueError("Dataset does not contain a Date column")
+
+    df["Date"] = pd.to_datetime(df["Date"], errors="coerce")
+    invalid_dates = int(df["Date"].isna().sum())
+    if invalid_dates:
+        raise ValueError(
+            f"Found {invalid_dates} invalid dates in the dataset"
+        )
+            
+    # filter out matches before min_date and after max_date
+    df = (
+        df[df["Date"].between(min_date, max_date)]
+        .sort_values("Date", kind="stable")
+        .reset_index(drop=True)
+    )
     
-    min_date = pd.Timestamp(min_date)
-    max_date = pd.Timestamp(max_date)
-    df = df[df["Date"].between(min_date, max_date)] # filter out matches before min_date and after max_date
+    if df.empty:
+        raise ValueError(
+            f"No matches found between {min_date} and {max_date}"
+        )
+        
+    # Split training - test sets
+    split_index = int(len(df) * (1 - test_size))
+    if split_index <= 0 or split_index >= len(df):
+        raise ValueError("Temporal split produced an empty dataset")
 
-    train_set, test_set = train_test_split(
-        df,
-        test_size=test_size,
-        shuffle=False, # temporal split, no shuffling
+    split_date = df.iloc[split_index]["Date"]
+    
+    training_set = df[df["Date"] < split_date].copy()
+    testing_set = df[df["Date"] >= split_date].copy()
+
+    if training_set.empty or testing_set.empty:
+        raise ValueError("Temporal split produced an empty dataset")
+            
+    Path(training_path).parent.mkdir(
+        parents=True,
+        exist_ok=True,
     )
-
-    return train_set, test_set
-
-# Adapt kaggle dataset to format of first used raw dataset
-def adapt_kaggle_data(raw_df: pd.DataFrame) -> pd.DataFrame:
-    df = raw_df.copy()
-
-    player_1_won = df["Winner"] == df["Player_1"]
-
-    df["Loser"] = np.where(
-        player_1_won,
-        df["Player_2"],
-        df["Player_1"],
+    Path(testing_path).parent.mkdir(
+        parents=True,
+        exist_ok=True,
     )
+    
+    training_set.to_csv(training_path, index=False)
+    testing_set.to_csv(testing_path, index=False)
 
-    df["WRank"] = np.where(
-        player_1_won,
-        df["Rank_1"],
-        df["Rank_2"],
-    )
-    df["LRank"] = np.where(
-        player_1_won,
-        df["Rank_2"],
-        df["Rank_1"],
-    )
-
-    df["WPts"] = np.where(
-        player_1_won,
-        df["Pts_1"],
-        df["Pts_2"],
-    )
-    df["LPts"] = np.where(
-        player_1_won,
-        df["Pts_2"],
-        df["Pts_1"],
-    )
-
-    df["WinnerOdds"] = np.where(
-        player_1_won,
-        df["Odd_1"],
-        df["Odd_2"],
-    )
-    df["LoserOdds"] = np.where(
-        player_1_won,
-        df["Odd_2"],
-        df["Odd_1"],
-    )
-
-    return df
+    return training_set, testing_set
 
 def validate_raw_data(
     raw_df: pd.DataFrame,
@@ -122,7 +122,6 @@ class EloState:
     surface_ratings: dict[str, dict[str, float]] = field(
         default_factory=dict
     )
-
     last_processed_date: str | None = None
 
 
@@ -185,15 +184,21 @@ def add_elo_features(
 
     # iterate over rows in order of date to update Elo ratings after each match
     for row in df.itertuples(index=False):
-        winner = row.Winner
-        loser = row.Loser
-        surface = row.Surface
+        player_1 = row.Player_1
+        player_2 = row.Player_2
+        if row.Winner not in {player_1, player_2}:
+            raise ValueError(
+                f"Winner {row.Winner!r} is not one of the players"
+            )
 
-        winner_elo = state.overall_ratings.get(
-            winner, config.initial_rating
+        player_1_score = float(row.Winner == player_1)
+        player_1_elo = state.overall_ratings.get(
+            player_1,
+            config.initial_rating,
         )
-        loser_elo = state.overall_ratings.get(
-            loser, config.initial_rating
+        player_2_elo = state.overall_ratings.get(
+            player_2,
+            config.initial_rating,
         )
 
         surface = str(row.Surface)
@@ -203,46 +208,48 @@ def add_elo_features(
             {},
         )
 
-        winner_surface_elo = surface_ratings.get(
-            winner,
+        player_1_surface_elo = surface_ratings.get(
+            player_1,
             config.initial_rating,
         )
-        loser_surface_elo = surface_ratings.get(
-            loser,
+        player_2_surface_elo = surface_ratings.get(
+            player_2,
             config.initial_rating,
         )
 
-        # we must add elo differences before the match is played
-        elo_differences.append(winner_elo - loser_elo)
+        # Compute features before updating ratings with this result.
+        elo_differences.append(player_1_elo - player_2_elo)
         surface_elo_differences.append(
-            winner_surface_elo - loser_surface_elo
+            player_1_surface_elo - player_2_surface_elo
         )
 
-        winner_expected = 1 / (
-            1 + 10 ** ((loser_elo - winner_elo) / 400)
+        player_1_expected = 1 / (
+            1 + 10 ** ((player_2_elo - player_1_elo) / 400)
         )
-        elo_change = config.k_factor * (1 - winner_expected)
+        elo_change = config.k_factor * (
+            player_1_score - player_1_expected
+        )
 
-        state.overall_ratings[winner] = winner_elo + elo_change
-        state.overall_ratings[loser] = loser_elo - elo_change
+        state.overall_ratings[player_1] = player_1_elo + elo_change
+        state.overall_ratings[player_2] = player_2_elo - elo_change
 
-        winner_surface_expected = 1 / (
+        player_1_surface_expected = 1 / (
             1
             + 10
             ** (
-                (loser_surface_elo - winner_surface_elo)
+                (player_2_surface_elo - player_1_surface_elo)
                 / 400
             )
         )
-        surface_change = (
-            config.k_factor * (1 - winner_surface_expected)
+        surface_change = config.k_factor * (
+            player_1_score - player_1_surface_expected
         )
 
-        surface_ratings[winner] = (
-            winner_surface_elo + surface_change
+        surface_ratings[player_1] = (
+            player_1_surface_elo + surface_change
         )
-        surface_ratings[loser] = (
-            loser_surface_elo - surface_change
+        surface_ratings[player_2] = (
+            player_2_surface_elo - surface_change
         )
 
     # Assign new features in one assignment
@@ -257,6 +264,7 @@ def add_elo_features(
 
     return df
 
+
 """
 Shape: (2644, 38)
 
@@ -268,18 +276,25 @@ def prepare_data(
 ) -> pd.DataFrame:
 
     features = FeatureConfig()
+    data_config = DataConfig()
     elo_state = elo_state or EloState()
-    
-    raw_df = adapt_kaggle_data(raw_df)
-    
+        
     raw_df = validate_raw_data(
         raw_df,
-        required_columns=features.raw
+        required_columns=features.raw,
     )
-    
+
     df = raw_df[features.raw].copy()
 
-    raw_numeric_cols = ["WRank", "LRank", "WPts", "LPts", "WinnerOdds", "LoserOdds"]
+
+    raw_numeric_cols = [
+        "Rank_1",
+        "Rank_2",
+        "Pts_1",
+        "Pts_2",
+        "Odd_1",
+        "Odd_2",
+    ]
     for column in raw_numeric_cols:
         df[column] = pd.to_numeric(
             df[column], 
@@ -293,65 +308,53 @@ def prepare_data(
     )
 
     # --- Feature engineering ---
-    df["y"] = 1 # before randomization, Player 1 is always the winner
+    df["y"] = (
+        df["Winner"] == df["Player_1"]
+    ).astype(int)
 
-    df["Rank_Diff"] = df["WRank"] - df["LRank"]
-    df["Pts_Diff"] = df["WPts"] - df["LPts"]
-    
-    # kaggle odds
-    
-    # convert odds to raw probabilities
-    winner_inverse = 1 / df["WinnerOdds"]
-    loser_inverse = 1 / df["LoserOdds"]
-    probability_total = winner_inverse + loser_inverse
+    rank_p1, rank_p2 = df["Rank_1"], df["Rank_2"]
+    # df["Rank_Diff"] = rank_p1 - rank_p2  
+    df["Log_Rank_Diff"] = np.log(rank_p1) - np.log(rank_p2)  # log(rankp1/rankp2)
+   
+    pts_p1, pts_p2 = df["Pts_1"], df["Pts_2"]
+    df["Log_Pts_Diff"] = np.log1p(pts_p1) - np.log1p(pts_p2)  # log(1+ptsp1) - log(1+ptsp2)
+    # inverse odds
+    player_1_inverse = 1 / df["Odd_1"]
+    player_2_inverse = 1 / df["Odd_2"]
+    probability_total = player_1_inverse + player_2_inverse
 
-    # sum is greater than 1 because of the bookmaker's margin
-    winner_probability = winner_inverse / probability_total
-    loser_probability = loser_inverse / probability_total
+    market_probability = (
+        player_1_inverse / probability_total
+    )
 
-    df["Odds_Prob_Diff"] = (
-        winner_probability - loser_probability
+    # clip: enclose values in range [epsilon, 1-epsilon] to avoid logit of 0 or 1
+    market_probability = market_probability.clip(
+        data_config.epsilon,
+        1 - data_config.epsilon,
+    )
+
+    # logit: log(p / (1 - p))
+    df["Odds_Logit_Diff"] = np.log(
+        market_probability
+        / (1 - market_probability)
     )
     
-    # first dataset odds
-    
-    # df["B365_Bet_Diff"] = df["B365W"] - df["B365L"]
-    # df["PS_Bet_Diff"] = df["PSW"] - df["PSL"]
-    # df["Max_Bet_Diff"] = df["MaxW"] - df["MaxL"]
-    # df["Avg_Bet_Diff"] = df["AvgW"] - df["AvgL"]
+    elo_config = EloConfig()
     
     df = add_elo_features(
         df,
-        config=EloConfig(),
+        config=elo_config,
         state=elo_state,
     )
-    
-    random_swap(df)
 
     # --- Selection ---
-    df = df[features.numeric + features.categorical + features.debug + ["y"]]
+    df = df[
+        features.numeric 
+        + features.categorical 
+        + features.high_cardinality_categorical
+        + features.elo
+        + features.debug 
+        + ["y"]
+    ]
     
     return df
-
-# --- Random Swap Player 1 and Player 2 ---
-# Otherwise, the model will learn to alway pick Player 1 as the winner
-def random_swap(df):
-    rng = np.random.default_rng(seed=42)
-    swap_mask = rng.integers(0, 2, size=len(df)).astype(bool) # Randomly swap 50% of the rows
-
-    # Swap players randomly 50% of the time 
-    df.loc[swap_mask, ["Winner", "Loser"]] = df.loc[swap_mask, ["Loser", "Winner"]].values
-
-    diff_cols = [
-        "Rank_Diff",
-        "Pts_Diff",
-        "Odds_Prob_Diff",
-        "Elo_Diff",
-        "Surface_Elo_Diff",
-    ]
-
-    for col in diff_cols:
-        df.loc[swap_mask, col] = df.loc[swap_mask, col] * -1 # Invert difference for swapped rows
-
-    df.loc[swap_mask, "y"] = 0 # P2 wins
-    

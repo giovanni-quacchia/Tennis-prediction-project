@@ -5,19 +5,20 @@ class DataConfig(BaseModel):
     
     # https://www.kaggle.com/datasets/dissfya/atp-tennis-2000-2023daily-pull/data
     raw_data_path      : str = "data/raw/atp_tennis.csv"
-    prepared_data_path : str = "data/prepared/tennis_prepared.xlsx"
-    testing_data_path  : str = "data/testing/atp_tennis_2026_testing.csv"
+    
+    raw_training_data_path : str = "data/training/atp_tennis_training.csv"
+    raw_testing_data_path  : str = "data/testing/atp_tennis_testing.csv"
+
+    prepared_training_data_path : str = "data/prepared/tennis_training.csv"
 
     models_path        : str = "models/"
     
     elo_state_path     : str = "data/prepared/elo_state.json"
 
-    # start-end date for training data
-    min_training_date           : str = "2006-01-01"
-    max_training_date           : str = "2025-12-31"
+    min_date           : str = "2006-01-01"
+    max_date           : str = "2026-12-31"
     
-    # end date for historical data used to compute Elo ratings
-    history_end_date            : str = "2025-12-31" 
+    # TODO: Compute ELO until last training date
 
     epsilon            : float = 0.001
     
@@ -27,35 +28,56 @@ class DataConfig(BaseModel):
 # http://www.tennis-data.co.uk/notes.txt
 class FeatureConfig(BaseModel):
     raw: list[str] = [
-        "WRank",
-        "LRank",
-        "WPts",
-        "LPts",
-        "WinnerOdds",
-        "LoserOdds",
+        "Player_1",
+        "Player_2",
+        "Winner",
+        "Rank_1",
+        "Rank_2",
+        "Pts_1",
+        "Pts_2",
+        "Odd_1",
+        "Odd_2",
         "Court",
         "Surface",
-        "Winner",
-        "Loser",
         "Date",
+        "Best of",
+        "Series",
+        "Round",
+        "Tournament",
     ]
 
     numeric: list[str] = [
-        "Rank_Diff",
-        "Pts_Diff",
-        "Odds_Prob_Diff",
-        "Elo_Diff", "Surface_Elo_Diff", # ELO features
+        "Log_Rank_Diff",
+        "Log_Pts_Diff",
+        "Odds_Logit_Diff",
+    ]
+    
+    elo: list[str] = [
+        "Elo_Diff",
+        "Surface_Elo_Diff",
     ]
     
     categorical: list[str] = [
-        "Court", "Surface"
+        "Court", "Surface",
+        "Series", "Round",
     ]
 
-    trainable: list[str] = numeric + categorical
+    high_cardinality_categorical: list[str] = [
+        "Tournament",
+    ]
+
+    trainable: list[str] = (
+        numeric
+        + categorical
+        + high_cardinality_categorical
+        + elo
+    )
 
     debug: list[str] = [
-        "Winner", "Loser",       # Players after random swap
-        "Date"
+        "Player_1",
+        "Player_2",
+        "Winner",
+        "Date",
     ]
     
 class EloConfig(BaseModel):
@@ -79,19 +101,38 @@ class RandomForestConfig(BaseModel):
     bootstrap: bool = True
     max_features: str | None = "sqrt"
     n_jobs: int = 1
+    
+class XGBoostConfig(BaseModel):
+    n_estimators: int = 300
+    learning_rate: float = 0.05
+    max_depth: int = 4
+    min_child_weight: float = 1.0
+    subsample: float = 0.8
+    colsample_bytree: float = 0.8
+    reg_alpha: float = 0.0
+    reg_lambda: float = 1.0
+
+    objective: str = "binary:logistic" # probability output for binary classification
+    eval_metric: str = "logloss"
+    tree_method: str = "hist" # tree construction algorithm, faster for large datasets
+
+    random_state: int = 42
+    n_jobs: int = 1
+    verbosity: int = 0
 
 # Configuration for cross-validation and hyperparameters fine-tuning
 class SearchConfig(BaseModel):
-    n_iter: int = 50
+    n_iter: int = 100
     cv: int = 5
-    scoring: str = "accuracy"
+    scoring: str = "neg_log_loss"   # accuracy / neg_log_loss
     n_jobs: int = -1            # Use all available cores for parallel processing
     random_state: int = 42
     verbose: int = 1
 
 class TrainingConfig(BaseModel):
-    test_size: float = 0.3
+    test_size: float = 0.2
     random_state: int = 42
 
     search: SearchConfig = SearchConfig()
     random_forest: RandomForestConfig = RandomForestConfig()
+    xgboost: XGBoostConfig = XGBoostConfig()
