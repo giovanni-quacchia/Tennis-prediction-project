@@ -152,10 +152,6 @@ Now elo is the most important feature
 
 I remove isBestOf5 as it has not a significant impact on accuracy.
 
-We can try implementing a combined ELO: $\alpha ELO + (1-\alpha) SurfaceELO $ (70% ELO, 30% SurfaceELO) to see if it improves accuracy.
-
-We create a custom transformer to combine ELO, surfELO and fine-tune alpha parameter to maximize accuracy.
-
 Lets try `neg_log_loss` instead of accuracy, because it is a better metric for probabilistic predictions.
 
 I selected Random Forest as the scikit-learn model because tennis match outcomes depend on nonlinear interactions between player strength, surface, recent form and match context. Random Forest can model these interactions better than Logistic Regression while remaining relatively robust and interpretable through feature importance.
@@ -238,3 +234,7 @@ python3 -m tennis predict <model>
 
 Now xgboost: training CV: 70.46%, test: 68.05%
 accuracy descreased a little bit, but the test is more reliable as it is bigger (20% of the dataset)
+
+Lets try adding data about age, hand, height
+
+https://huggingface.co/datasets/joshsgoldstein/atp-players/blob/main/atp_players.csv

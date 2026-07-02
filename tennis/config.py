@@ -40,16 +40,17 @@ class FeatureConfig(BaseModel):
         "Court",
         "Surface",
         "Date",
-        "Best of",
         "Series",
         "Round",
         "Tournament",
+        # "Best of"
     ]
 
     numeric: list[str] = [
         "Log_Rank_Diff",
         "Log_Pts_Diff",
         "Odds_Logit_Diff",
+        # "Is_Best_Of_5",
     ]
     
     elo: list[str] = [

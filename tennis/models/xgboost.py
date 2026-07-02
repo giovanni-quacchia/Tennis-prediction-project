@@ -26,7 +26,6 @@ class TennisXGBoost(BaseModel):
             "preprocessor__high_cardinality_cat__onehot__max_categories": [
                 5,
                 10,
-                15,
                 20,
                 30,
             ],
