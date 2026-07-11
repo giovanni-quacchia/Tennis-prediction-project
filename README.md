@@ -449,3 +449,6 @@ Configured a toml file and installed with `pip install -e .` from root directory
 ```bash
 tennis <cmd>
 ```
+
+
+Note: a tennis prediction problem has an high variance based on weather, injuries, fatigue, but this variance from the real world and not from the model, so we can't use bootstrapping with random forests to reduce variance.

@@ -5,7 +5,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from tennis_prediction.config import DataConfig, EloConfig, FeatureConfig
+from tennis_prediction.config import EloConfig, FeatureConfig
 
 
 def read_dataframe(path: str | Path) -> pd.DataFrame:
@@ -69,10 +69,12 @@ def merge_raw_datasets(
     merged = merged[
         merged["Date"].between(min_date, max_date, inclusive="both")
     ]
-    merged = merged.drop_duplicates(
-        subset=["Date", "Tournament", "Round", "Winner", "Loser"],
-        keep="last",
-    )
+    duplicate_keys = [
+        column
+        for column in ["Date", "Tournament", "Round", "Winner", "Loser"]
+        if column in merged.columns
+    ]
+    merged = merged.drop_duplicates(subset=duplicate_keys, keep="last")
     merged = merged.sort_values("Date", kind="stable").reset_index(drop=True)
 
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -117,15 +119,14 @@ def create_temporal_train_test_split(
 class HistoricalState:
     overall_ratings: dict[str, float] = field(default_factory=dict)
     surface_ratings: dict[str, dict[str, float]] = field(default_factory=dict)
-    recent_elo_ratings: dict[str, list[float]] = field(default_factory=dict)
-    recent_results: dict[str, list[int]] = field(default_factory=dict)
-    recent_first_set_results: dict[str, list[int]] = field(
+    matches_played: dict[str, int] = field(default_factory=dict)
+    surface_matches_played: dict[str, dict[str, int]] = field(
         default_factory=dict
     )
-    recent_match_loads: dict[
-        str,
-        list[tuple[pd.Timestamp, float]],
-    ] = field(default_factory=dict)
+    recent_results: dict[str, list[int]] = field(default_factory=dict)
+    recent_match_dates: dict[str, list[pd.Timestamp]] = field(
+        default_factory=dict
+    )
     head_to_head_wins: dict[str, dict[str, int]] = field(default_factory=dict)
     surface_head_to_head_wins: dict[
         str,
@@ -151,32 +152,30 @@ def _update_elo_pair(
     ratings[player_2] = player_2_rating - change
 
 
+def _dynamic_k(matches_played: int, config: EloConfig) -> float:
+    """Return a smoother update size for experienced players."""
+    return max(
+        config.k_min,
+        config.k_base / (1 + matches_played / 100),
+    )
+
+
 def _recent_win_rate(results: list[int]) -> float:
     """Return neutral form for players without previous matches."""
     return float(np.mean(results)) if results else 0.5
 
 
-def _match_load(row) -> float:
-    """Approximate match workload from games played in each set."""
-    load = 0.0
-    for set_number in range(1, 6):
-        winner_games = getattr(row, f"W{set_number}")
-        loser_games = getattr(row, f"L{set_number}")
-        if pd.notna(winner_games) and pd.notna(loser_games):
-            # Later sets receive more weight as accumulated effort increases.
-            load += set_number * (winner_games + loser_games)
-    return load
-
-
 def _recent_fatigue(
-    history: list[tuple[pd.Timestamp, float]],
+    history: list[pd.Timestamp],
     match_date: pd.Timestamp,
+    window_days: int,
     decay_days: float,
 ) -> float:
-    """Discount previous match loads exponentially with elapsed time."""
+    """Discount recent matches exponentially with elapsed time."""
     return float(sum(
-        np.exp(-(match_date - previous_date).days / decay_days) * load
-        for previous_date, load in history
+        np.exp(-(match_date - previous_date).days / decay_days)
+        for previous_date in history
+        if 0 < (match_date - previous_date).days <= window_days
     ))
 
 
@@ -207,9 +206,7 @@ def add_historical_features(
     feature_values: dict[str, list[float | int]] = {
         "Elo_Diff": [],
         "Surface_Elo_Diff": [],
-        "Elo_Progression_Diff": [],
         "Recent_Form_Diff": [],
-        "Recent_First_Set_Form_Diff": [],
         "Fatigue_Diff": [],
         "H2H_Diff": [],
         "H2H_Surface_Diff": [],
@@ -225,19 +222,14 @@ def add_historical_features(
             state.overall_ratings.get(player_1, config.initial_rating),
             state.overall_ratings.get(player_2, config.initial_rating),
         )
-        elo_histories = (
-            state.recent_elo_ratings.get(player_1, []),
-            state.recent_elo_ratings.get(player_2, []),
-        )
-        elo_progressions = tuple(
-            rating - history[0] if history else 0.0
-            for rating, history in zip(overall_ratings, elo_histories)
-        )
         surface = str(row.Surface)
         surface_ratings = state.surface_ratings.setdefault(surface, {})
         surface_rating_values = (
             surface_ratings.get(player_1, config.initial_rating),
             surface_ratings.get(player_2, config.initial_rating),
+        )
+        surface_matches_played = state.surface_matches_played.setdefault(
+            surface, {}
         )
 
         # Store a bounded window of previous results for each player.
@@ -246,30 +238,24 @@ def add_historical_features(
             state.recent_results.get(player_2, []),
         )
         recent_forms = tuple(map(_recent_win_rate, recent_histories))
-        first_set_histories = (
-            state.recent_first_set_results.get(player_1, []),
-            state.recent_first_set_results.get(player_2, []),
-        )
-        first_set_forms = tuple(
-            map(_recent_win_rate, first_set_histories)
-        )
 
-        # Retain only workloads inside the configured acute-fatigue window.
+        # Retain only match dates inside the configured acute-fatigue window.
         fatigue_histories = []
         for player in (player_1, player_2):
-            history = state.recent_match_loads.get(player, [])
+            history = state.recent_match_dates.get(player, [])
             history = [
-                (previous_date, load)
-                for previous_date, load in history
-                if 0 <= (match_date - previous_date).days
+                previous_date
+                for previous_date in history
+                if 0 < (match_date - previous_date).days
                 <= features.fatigue_window_days
             ][-features.history_window :]
-            state.recent_match_loads[player] = history
+            state.recent_match_dates[player] = history
             fatigue_histories.append(history)
         fatigue_scores = tuple(
             _recent_fatigue(
                 history,
                 match_date,
+                features.fatigue_window_days,
                 features.fatigue_decay_days,
             )
             for history in fatigue_histories
@@ -297,14 +283,8 @@ def add_historical_features(
         feature_values["Surface_Elo_Diff"].append(
             surface_rating_values[0] - surface_rating_values[1]
         )
-        feature_values["Elo_Progression_Diff"].append(
-            elo_progressions[0] - elo_progressions[1]
-        )
         feature_values["Recent_Form_Diff"].append(
             recent_forms[0] - recent_forms[1]
-        )
-        feature_values["Recent_First_Set_Form_Diff"].append(
-            first_set_forms[0] - first_set_forms[1]
         )
         feature_values["Fatigue_Diff"].append(
             fatigue_scores[0] - fatigue_scores[1]
@@ -312,30 +292,42 @@ def add_historical_features(
         feature_values["H2H_Diff"].append(h2h_difference)
         feature_values["H2H_Surface_Diff"].append(surface_h2h_difference)
 
-        # Keep pre-match Elo snapshots to measure momentum without leakage.
-        for player, rating, history in zip(
-            (player_1, player_2), overall_ratings, elo_histories
-        ):
-            state.recent_elo_ratings[player] = (
-                history + [rating]
-            )[-features.history_window :]
-
         # Update global and surface Elo only after recording pre-match features.
+        k_match = (
+            _dynamic_k(state.matches_played.get(player_1, 0), config)
+            + _dynamic_k(state.matches_played.get(player_2, 0), config)
+        ) / 2
         _update_elo_pair(
             state.overall_ratings,
             player_1,
             player_2,
             *overall_ratings,
             player_1_score,
-            config.k_factor,
+            k_match,
         )
+        k_surface = (
+            _dynamic_k(surface_matches_played.get(player_1, 0), config)
+            + _dynamic_k(surface_matches_played.get(player_2, 0), config)
+        ) / 2
         _update_elo_pair(
             surface_ratings,
             player_1,
             player_2,
             *surface_rating_values,
             player_1_score,
-            config.k_factor,
+            k_surface,
+        )
+        state.matches_played[player_1] = (
+            state.matches_played.get(player_1, 0) + 1
+        )
+        state.matches_played[player_2] = (
+            state.matches_played.get(player_2, 0) + 1
+        )
+        surface_matches_played[player_1] = (
+            surface_matches_played.get(player_1, 0) + 1
+        )
+        surface_matches_played[player_2] = (
+            surface_matches_played.get(player_2, 0) + 1
         )
 
         # Append the current outcome only after recording pre-match form.
@@ -347,28 +339,11 @@ def add_historical_features(
                 history + [result]
             )[-features.history_window :]
 
-        # First-set scores update only future matches, never the current row.
-        if pd.notna(row.W1) and pd.notna(row.L1) and row.W1 != row.L1:
-            first_set_winner = row.Winner if row.W1 > row.L1 else row.Loser
-            for player, history in (
-                (player_1, first_set_histories[0]),
-                (player_2, first_set_histories[1]),
-            ):
-                result = int(player == first_set_winner)
-                state.recent_first_set_results[player] = (
-                    history + [result]
-                )[-features.history_window :]
-
-        # The completed match contributes equal workload to both players'
-        # future fatigue, because both played every game counted above.
-        current_match_load = _match_load(row)
-        if current_match_load > 0:
-            for player, history in zip(
-                (player_1, player_2), fatigue_histories
-            ):
-                state.recent_match_loads[player] = (
-                    history + [(match_date, current_match_load)]
-                )[-features.history_window :]
+        # The current match contributes only to future fatigue features.
+        for player, history in zip((player_1, player_2), fatigue_histories):
+            state.recent_match_dates[player] = (
+                history + [match_date]
+            )[-features.history_window :]
 
         # Record the winner only after exposing both pre-match H2H features.
         loser = player_2 if row.Winner == player_1 else player_1
@@ -388,7 +363,6 @@ def prepare_data(
 ) -> pd.DataFrame:
     """Create leakage-free model features from winner/loser source rows."""
     features = FeatureConfig()
-    data_config = DataConfig()
     historical_state = historical_state or HistoricalState()
 
     missing = set(features.raw) - set(raw_dataset.columns)
@@ -460,31 +434,22 @@ def prepare_data(
     # The target is 1 exactly when the randomized Player 1 won the match.
     dataset["y"] = winner_is_player_1.astype(int)
 
-    # Log differences emphasize changes near the top of the rankings.
-    dataset["Log_Rank_Diff"] = (
-        np.log(dataset["Rank_1"]) - np.log(dataset["Rank_2"])
-    )
+    # Ranking difference from Player 1 perspective.
+    dataset["Rank_Diff"] = dataset["Rank_1"] - dataset["Rank_2"]
 
-    # log1p supports zero points while reducing the scale of large totals.
-    dataset["Log_Pts_Diff"] = (
-        np.log1p(dataset["Pts_1"]) - np.log1p(dataset["Pts_2"])
-    )
+    # Ranking points difference from Player 1 perspective.
+    dataset["Points_Diff"] = dataset["Pts_1"] - dataset["Pts_2"]
 
-    # Normalize inverse odds to remove the bookmaker overround.
-    inverse_1 = 1 / dataset["Odd_1"]
-    inverse_2 = 1 / dataset["Odd_2"]
-    market_probability = inverse_1 / (inverse_1 + inverse_2)
-    market_probability = market_probability.clip(
-        data_config.epsilon, 1 - data_config.epsilon
-    )
-
-    # Log-odds provide an unbounded, symmetric market-strength feature.
-    dataset["Odds_Logit_Diff"] = np.log(
-        market_probability / (1 - market_probability)
+    # Market log-odds ratio: positive values mean Player 1 is favored.
+    valid_odds = dataset["Odd_1"].gt(0) & dataset["Odd_2"].gt(0)
+    dataset["Odds_Diff"] = np.nan
+    dataset.loc[valid_odds, "Odds_Diff"] = np.log(
+        dataset.loc[valid_odds, "Odd_2"]
+        / dataset.loc[valid_odds, "Odd_1"]
     )
 
     # Best-of-five is represented as a compact binary match-format feature.
-    dataset["Is_Best_Of_5"] = dataset["Best of"].eq(5).astype(int)
+    dataset["Best_of_5"] = dataset["Best of"].eq(5).astype(int)
 
     # Historical features are computed last, in chronological order.
     dataset = add_historical_features(

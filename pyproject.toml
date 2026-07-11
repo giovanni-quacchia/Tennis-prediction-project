@@ -18,6 +18,7 @@ dependencies = [
     "openpyxl==3.1.5",
     "xgboost==3.3.0",
     "xlrd==2.0.2", # for reading .xls files
+    "matplotlib==3.11", # for plotting calibration curves
 ]
 
 # create a cmd "tennis-predictor" that runs tennis_prediction/cli.py

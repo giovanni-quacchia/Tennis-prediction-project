@@ -45,16 +45,16 @@ class FeatureConfig(BaseModel):
         "L4",
         "W5",
         "L5",
-        "B365W","B365L"
+        "B365W",
+        "B365L",
     ]
 
     numeric: list[str] = [
-        "Log_Rank_Diff",
-        "Log_Pts_Diff",
-        "Odds_Logit_Diff",
-        "Is_Best_Of_5",
+        "Rank_Diff",
+        "Points_Diff",
+        "Odds_Diff",
+        "Best_of_5",
         "Recent_Form_Diff",
-        "Recent_First_Set_Form_Diff",
         "Fatigue_Diff",
         "H2H_Diff",
         "H2H_Surface_Diff",
@@ -63,7 +63,6 @@ class FeatureConfig(BaseModel):
     elo: list[str] = [
         "Elo_Diff",
         "Surface_Elo_Diff",
-        "Elo_Progression_Diff",
     ]
 
     categorical: list[str] = [
@@ -94,7 +93,8 @@ class FeatureConfig(BaseModel):
 
 class EloConfig(BaseModel):
     initial_rating: float = 1500.0
-    k_factor: float = 32.0
+    k_base: float = 32.0
+    k_min: float = 8.0
 
 
 class XGBoostConfig(BaseModel):
