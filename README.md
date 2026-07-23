@@ -6,6 +6,14 @@ University of Venice 2025/2026.
 The current pipeline uses ATP data from tennis-data.co.uk (2006 onward),
 temporal validation, Elo features and XGBoost.
 
+Player age features are built from an external ATP players file. Since match
+data uses abbreviated names such as `Ruud C.`, the same key can refer to
+different players across eras. The feature engineering step keeps all date of
+birth candidates and uses an age only when exactly one candidate is plausible
+for the match date, with player age constrained between 16 and 45 years. If the
+player remains ambiguous, the age feature is left missing and handled by the
+model imputer.
+
 ## Commands
 
 ```bash
