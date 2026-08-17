@@ -1,0 +1,118 @@
+% packages.tex
+
+\usepackage[utf8]{inputenc}   % Permette di leggere i caratteri accentati e speciali da tastiera
+\usepackage[T1]{fontenc}  % Usa l'encoding T1
+\usepackage[english]{babel}
+\usepackage{listings}
+\usepackage{xcolor}  % Per usare i colori
+\usepackage{lipsum}
+\usepackage{scrhack} % resolve KOMA-Script warnings
+
+
+% -- MATH -- %
+
+\usepackage{amsmath}
+\usepackage{cancel}
+\usepackage{amsthm} % math theorem, proofs, ...
+\usepackage{thmtools}  % custom theorem styles
+
+\declaretheoremstyle[
+    headfont=\bfseries,       
+    bodyfont=\normalfont,                  
+]{base_th_style}
+
+\declaretheoremstyle[
+    style = base_th_style,    
+    numbered=no               
+]{thmstyle}
+
+\declaretheoremstyle[
+    style=base_th_style,    
+    numbered=yes               
+]{lemstyle}
+
+\declaretheoremstyle[
+    style=base_th_style,    
+    numbered=yes               
+]{defstyle}
+
+\declaretheorem[style=thmstyle, name=Theorem]{theorem*}
+\declaretheorem[style=thmstyle, name=Property]{property*}
+\declaretheorem[style=lemstyle, name=Lemma]{lemma}
+\declaretheorem[style=defstyle, name=Definition]{definition}
+\renewenvironment{proof}{{\noindent\bfseries Proof.}}{\hfill$\square$\medskip}
+
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\N}{\mathbb{N}}
+\newcommand{\Z}{\mathbb{Z}}
+\newcommand{\Q}{\mathbb{Q}}
+\newcommand{\C}{\mathbb{C}}
+\newcommand{\ve}{\varepsilon}
+% --  -- %
+
+\usepackage{import}
+\usepackage{caption}
+
+\usepackage{graphicx}
+\usepackage{float}
+\newcommand{\extlink}[2]{%
+    \href{#1}{\color{lightblue}\uline{#2}}%
+}
+\usepackage{soul} % for cut text
+\usepackage{csquotes}
+\usepackage{fancyvrb} % for verbatim environment
+\usepackage[backend=biber, style=numeric, sorting=none]{biblatex}
+\addbibresource{appendices/ref.bib}
+
+\usepackage[backend=biber, style=numeric, sorting=none]{biblatex}
+\addbibresource{appendices/ref.bib}
+
+\usepackage{bm} % bold math block
+
+\usepackage{lmodern}          % Font di alta qualità che supporta meglio gli accenti rispetto al default
+\usepackage{textcomp}         % Supporta simboli aggiuntivi
+
+\usepackage{framed}
+\usepackage{enumitem}
+\usepackage{multirow}
+\usepackage{multicol}
+\usepackage{array}
+\usepackage{tabularx} % for better tables
+\usepackage[table]{xcolor} % for coloring table rows
+\usepackage{makecell}
+
+% table in multiple pages
+\usepackage{ltablex}
+\usepackage{booktabs}
+\keepXColumns
+
+% particular schemes
+\usepackage{tikz}
+\usepackage{pgfplots}
+\pgfplotsset{compat=1.18}
+\usetikzlibrary{shapes, arrows.meta, positioning}
+\usetikzlibrary{calc} % for coordinate calculation
+
+% -------------------------------- FSM --------------------------------%
+\usetikzlibrary{decorations.pathreplacing} % for braces
+\usetikzlibrary{automata, positioning, arrows} % for FSM diagrams
+\usetikzlibrary{backgrounds} % for background layers
+
+% States and transitions style
+\tikzset{
+    fsm_style/.style={
+        >=stealth, 
+        node distance=4cm, 
+        on grid, 
+        auto,
+        thick,
+        every state/.style={minimum size=1.5cm}
+    }
+}
+% -------------------------------- FSM --------------------------------%
+
+\usepackage[most]{tcolorbox}
+\usepackage{fontawesome5}
+\usepackage{xcolor}
+\usepackage{url}
+\usepackage{hhline}

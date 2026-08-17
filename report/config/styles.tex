@@ -1,0 +1,57 @@
+% styles.tex
+
+\lstdefinestyle{BaseProgrammingStyle}{
+  keywordstyle=\color[HTML]{d8127e}\bfseries,   % keyword: bf pink
+  commentstyle=\color[HTML]{009900},            % comments: green
+  backgroundcolor=\color[HTML]{f2f2eb},         % Background: beige   
+  numberstyle=\color{gray},                     % line numbers: gray
+  stringstyle=\color[HTML]{9400d1},             % strings: purple
+  aboveskip=1em,                          
+  belowskip=1em,
+  upquote=true,
+  numbers=left,  
+  basicstyle=\ttfamily\small,
+  columns=fullflexible,
+  frame=none,                             
+  showstringspaces=false, 
+  breaklines=true, 
+  breakatwhitespace=true, 
+  lineskip=0pt,
+  sensitive=false,
+  literate={~} {$\sim$}{1}                      % tilde classico
+}
+
+\lstdefinestyle{pythonstyle}{
+  style=BaseProgrammingStyle,
+  language=python,   
+}
+
+\lstdefinestyle{phpstyle}{
+  style=BaseProgrammingStyle,
+  language=PHP,
+  identifierstyle=\color{black},       % Identificatori e variabili in nero
+  morekeywords={php, return, public, private, protected, static, class, extends, implements, new, try, catch, finally, use, namespace},
+  % otherkeywords={\$, \{, \}, [, ]},
+  sensitive=true
+}
+
+\lstdefinestyle{sqlstyle}{
+  style=BaseProgrammingStyle,
+  language=SQL,
+  morekeywords={DATABASE, TABLE, REFERENCES, INDEX},
+  morecomment=[l]{\#},
+}
+
+\lstdefinestyle{bashstyle}{
+  style=BaseProgrammingStyle,
+  language=bash,
+  morekeywords={user@host, \$}
+}
+
+\lstdefinestyle{cstyle}{
+  style=BaseProgrammingStyle,
+  language=C,
+  morekeywords={system},
+  % morecomment=[l]{//},
+  % morecomment=[s]{/*}{*/},
+}

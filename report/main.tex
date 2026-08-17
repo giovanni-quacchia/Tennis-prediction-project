@@ -1,0 +1,33 @@
+\documentclass[
+    12pt, 
+    a4paper,          
+    parskip=half, 
+]{scrreprt}
+
+% Load configuration files
+\input{config/packages.tex}
+\input{config/layout.tex}
+\input{config/styles.tex}
+
+\begin{document}
+
+\begin{center}
+\Large\bfseries
+Tennis Prediction Project
+
+\normalsize\mdseries
+\vspace{1cm}
+
+\begin{tabular}{l@{\hspace{3cm}}l}
+\textbf{Author:} & Giovanni Quacchia \\
+\textbf{Matricola:} & 900676 \\
+\textbf{University:} & Ca' Foscari University \\
+\textbf{Academic Year:} & 2025-2026
+\end{tabular}
+\end{center}
+
+\subimport{chapters/}{content.tex}
+
+\printbibliography[heading=none]
+
+\end{document}

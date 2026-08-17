@@ -1,0 +1,37 @@
+\usepackage{xcolor}
+\usepackage[automark]{scrlayer-scrpage}
+\usepackage[hidelinks]{hyperref}
+\usepackage[hmarginratio=1:1, margin=2.5cm, top=2cm, bottom=2cm, footskip=1.5cm]{geometry}
+\usepackage{ragged2e}
+\usepackage{xpatch}
+
+\KOMAoptions{twoside=semi, footsepline=0.4pt}
+
+% ---------------------------------------------------------------
+% N Chapter Title
+% ---------------------------------------------------------------
+\xapptocmd{\chapterheadstartvskip}{%
+  {%
+    \setlength{\parskip}{0pt}%
+    \setlength{\parfillskip}{0pt plus 1fil}%
+    \noindent\rule[.3\baselineskip]{\linewidth}{0.4pt}\par
+  }\nobreak
+}{}{}
+\xpretocmd{\chapterheadendvskip}{%
+  {%
+    \setlength{\parskip}{0pt}%
+    \setlength{\parfillskip}{0pt plus 1fil}%
+    \noindent\rule[-.3\baselineskip]{\linewidth}{0.4pt}\par
+  }\nobreak
+}{}{}
+
+% Footer: pagina esterna, capitolo interno
+\clearpairofpagestyles
+\automark[chapter]{chapter}
+\lefoot{\textbf{\thepage}}
+\refoot{\small\textbf{\upshape\leftmark}}
+\lofoot{\small\textbf{\upshape\leftmark}}
+\rofoot{\textbf{\thepage}}
+\pagestyle{scrheadings}
+
+\raggedbottom

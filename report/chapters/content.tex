@@ -1,0 +1,95 @@
+\paragraph{Introduction} The aim of this project is testing different machine learning algorithms to predict the outcome of tennis matches and analyzing the results obtained.
+
+\paragraph{Disclaimer} After realizing that the average betting market accuracy is around 66\%, I tried to build up a model that could beat the market. However, I discovered that regardless the model used, the most important information is embedded in the betting odds, and integrating other match- and player-specific data does not lead to any significant improvement.\footnote{Wilkens, 2021, ``Sports prediction and betting models in the machine learning age: The case of tennis''}
+In this report, I will present the most interesting features that I built to try to reach as much as possible the market accuracy and analyze the results, including the most correct and wrong predictions made by the model.
+
+\subsection*{Datasets and Data cleaning}
+
+Two main datasets were used in this project
+
+\begin{itemize}
+    \item \textbf{Tennis matches}: A merge of the datasets provided by \url{http://www.tennis-data.co.uk} with matches from 2005 to 2026 with approximately 55,000 matches.
+    \item \textbf{Tennis Players}: A dataset with players' information, including date of birth (dob) and dominant hand.
+\end{itemize}
+
+Initially, the tennis matches started from 2000, but I decided to remove the matches before 2005/07/04, because two important features regarding players' points were not available before that date.
+After removing duplicates and adjusting feature types, the final dataset is saved in \texttt{data/cleaned/tennis\_matches.xlsx}.
+
+The tennis players dataset was cleaned as well, removing duplicates, rows with missing values and player names were uniformed to the same format of the tennis matches dataset. (see the examples in \autoref{fig:original_players} and \autoref{fig:processed_players}).
+Finally, the dataset was saved in \texttt{data/cleaned/tennis\_players.xlsx}.
+
+\begin{figure*}[ht]
+    \centering
+    \begin{minipage}{0.48\textwidth}
+        \centering
+        \caption{Original player names}
+        \label{fig:original_players}
+        \begin{tabular}{lcc}
+            \hline
+            & name\_first & name\_last \\
+            \hline
+            0 & Jannik & Sinner \\
+            1 & Novak & Doković \\
+            2 & Rafael & Nadal \\
+            \hline
+        \end{tabular}
+    \end{minipage}
+    \hfill
+    \begin{minipage}{0.48\textwidth}
+        \centering
+        \caption{Processed player keys}
+        \label{fig:processed_players}
+        \begin{tabular}{lc}
+            \hline
+            & player\_key \\
+            \hline
+            0 & sinner j. \\
+            1 & djokovic n. \\
+            2 & nadal r. \\
+            \hline
+        \end{tabular}
+    \end{minipage}
+\end{figure*}
+
+\subsection*{Feature Engineering}
+
+Firstly, I randomly swapped the players in each match to avoid the model learning that the first player is always the winner.
+Then, I started creating simple features, such as players' ranking, points and odds difference.
+I also tested logarithmic differences to handle different ranking tiers, but omitted them from training because tree-based models do not require normalization and standardization.
+
+\paragraph{Player-specific features} I computed the age difference between the two players, restricting ages between 16 and 45 and excluding homonyms. 
+I also defined a left-handed advantage feature to account for left-handers' rarity and opponents' lack of practice against them, 
+alongside a home advantage feature, mapping each match location to its corresponding country IOC code to capture crowd support and environmental familiarity.
+
+\begin{figure}[ht]
+    \centering
+    \resizebox{\columnwidth}{!}{%
+    \begin{tabular}{lccccccccccc}
+        \hline
+        Player 1 & Player 2 & Location & Age 1 & Age 2 & Age Diff & H1 & H2 & H.Adv & Home 1 & Home 2 & Home Adv \\
+        \hline
+        valkusz m. & sinner j. & Budapest & 20.70 & 17.69 & 3.01 & R & R & 0.0 & HUN & ITA & -1.0 \\
+        calatrava a. & djokovic n. & Umag & 32.11 & 18.18 & 13.94 & R & R & 0.0 & ESP & SRB & 0.0 \\
+        nadal r. & berdych t. & Bastad & 19.10 & 19.81 & -0.71 & L & R & 1.0 & ESP & CZE & 0.0 \\
+        \hline
+    \end{tabular}%
+    }
+    \caption{Sample matches with player-specific features}
+    \label{fig:matchup_features}
+\end{figure}
+
+\paragraph{ELO} This feature estimates a player's skill level, both overall and surface-specific. Players start with a rating of 1500, with win probability $E_1$ for Player 1 defined as:
+\begin{equation*}
+    E_1 = (1 + 10^{(R_2 - R_1)/400})^{-1}
+\end{equation*}
+The rating is updated post-match as $\Delta R = K \cdot (S_1 - E_1)$, where $R_i$ are pre-match ratings and $S_1 \in \{0, 1\}$ is the outcome. To account for rating maturity, I employ a dynamic update factor $K$ decreasing with career matches $M_i(t)$ as proposed by FiveThirtyEight \footnote{Bunker et al., 2023, ``A comparative evaluation of Elo ratings- and machine learning-based methods for tennis match result prediction''}:
+\begin{equation*}
+    K_i(t) = 250 \cdot (M_i(t) + 5)^{-0.4}
+\end{equation*}
+
+\paragraph{Fatigue} 
+
+
+
+
+
