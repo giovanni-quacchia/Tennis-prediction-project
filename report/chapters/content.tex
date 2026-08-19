@@ -54,8 +54,8 @@ Finally, the dataset was saved in \texttt{data/cleaned/tennis\_players.xlsx}.
 \subsection*{Feature Engineering}
 
 Firstly, I randomly swapped the players in each match to avoid the model learning that the first player is always the winner.
-Then, I started creating simple features, such as players' ranking, points and odds difference.
-I also tested logarithmic differences to handle different ranking tiers, but omitted them from training because tree-based models do not require normalization and standardization.
+Then, I started creating simple features, such as players' ranking, points and odds differences.
+I also tested logarithmic differences to handle different ranking tiers, but omitted them from training because tree-based models do not require normalization nor standardization.
 
 \paragraph{Player-specific features} I computed the age difference between the two players, restricting ages between 16 and 45 and excluding homonyms. 
 I also defined a left-handed advantage feature to account for left-handers' rarity and opponents' lack of practice against them, 
@@ -87,9 +87,115 @@ The rating is updated post-match as $\Delta R = K \cdot (S_1 - E_1)$, where $R_i
     K_i(t) = 250 \cdot (M_i(t) + 5)^{-0.4}
 \end{equation*}
 
-\paragraph{Fatigue} 
+\paragraph{Surface Elo} Computed using the same formula as standard Elo but tracked independently for each surface. To address sparse data on specific courts, it is combined in a 50/50 blend with the overall rating. \footnote{Jeff Sackmann, 2019, ``An Introduction to Tennis Elo''}
+Given its high correlation with standard Elo, only the surface-specific version is retained for model training to avoid redundancy.
+
+\paragraph{Fatigue} Player fatigue is modeled using an exponentially weighted moving average (EWMA). It recursively updates the fatigue metric to capture recent workload spikes while giving progressively less weight to older sessions:
+\begin{equation*}
+    \text{EWMA}_{\text{today}} = \text{Load}_{\text{today}} \cdot \lambda + (1 - \lambda) \cdot \text{EWMA}_{\text{yesterday}}, \quad \lambda = \frac{2}{N+1} \; \footnote{Murray et al, 2016, ``Calculating acute: Chronic workload ratios using exponentially weighted moving averages provides a more sensitive indicator of injury likelihood than rolling averages''}
+\end{equation*}
+
+where $\lambda$ is the degree of decay, $N$ is the fatigue window size in days and $\text{LOAD} \in \{0, 1\}$.
+
+The recursive formula is expanded as:
+
+\[
+\text{EWMA}_{\text{today}} = \lambda + (1 - \lambda)^{\text{days\_gap}} \cdot \text{EWMA}_{\text{last\_match}}
+\]
+
+since on days without matches, $\text{LOAD}_{\text{today}}$ is 0. See the example in \autoref{fig:fatigue_computation}.
+
+\begin{figure}[ht]
+    \centering
+    \normalsize
+    \renewcommand{\arraystretch}{1}
+    \begin{tabular}{cccc}
+        \hline
+        Date & Load & Pre-match Fatigue & Post-match EWMA \\
+        \hline
+        Day 0 & 1 (match) & $0$ (no history) & $0.2 + 0.8\cdot0 = 0.200$ \\
+        Day 3 & 1 (match) & $0.8^{3}\cdot0.200 = 0.102$ & $0.2 + 0.8\cdot0.102 = 0.282$ \\
+        Day 4 & 1 (match) & $0.8^{1}\cdot0.282 = 0.226$ & $0.2 + 0.8\cdot0.226 = 0.381$ \\
+        \hline
+    \end{tabular}
+    \caption{Sample fatigue calculation for a single player ($\lambda = 0.2$)}
+    \label{fig:fatigue_computation}
+\end{figure}
+
+\paragraph{Player form} The player recent form is computed as a weighted average of the last $N$ matches won, assigning a higher weight to matches against stronger opponents. 
+The dominance form is calculated using the same logic, considering the games won by the player in the last $N$ matches.
+
+\begin{equation*}
+    \texttt{weighted\_recent\_result} = \texttt{result} \cdot \frac{\texttt{opponent\_ELO}}{\texttt{BASE\_ELO}}
+\end{equation*}
+
+\begin{equation*}
+    \texttt{weighted\_dominance\_result} = \frac{\texttt{games\_won}}{\texttt{games\_total}} \cdot \frac{\texttt{opponent\_ELO}}{\texttt{BASE\_ELO}}
+\end{equation*}
+
+\pagebreak
+
+\paragraph{Head to Head statistics} They compare two players' historical performance against each other, both overall and surface-specific. 
+See the example in \autoref{fig:h2h_computation}.
+
+\begin{figure}[ht]
+    \centering
+    \normalsize
+    \renewcommand{\arraystretch}{1}
+    \begin{tabular}{ccccc}
+        \hline
+        Match ($P_1$ vs $P_2$) & $y$ & Pre-match H2H & Post-match H2H \\
+        \hline
+        nadal vs djokovic & $1$ & $0$ & $-1$ \\
+        djokovic vs nadal & $0$ & $-1$ & $-2$ \\
+        nadal vs djokovic & $1$ & $2$ & $-3$ \\
+        \hline
+    \end{tabular}
+    \caption{Sample head-to-head calculation for two players. \\ The \texttt{pair\_key = (djokovic, nadal)} is sorted alphabetically and \texttt{y=1} when \texttt{P1} wins.}
+    \label{fig:h2h_computation}
+\end{figure}
+
+\paragraph{Categorical features} Both high and low cardinality categorical features are included in the model and are encoded using one-hot encoding.
+The high cardinality features, such as \texttt{Tournament}, are limited to a maximum of 30 categories and a minimum frequency of 50, grouping the remaining categories into an "other" category.
+
+The prepared dataset is then split into training and testing datasets (70-30).
+
+\subsection*{Models training}
+
+The preprocessing pipeline handles both numerical and categorical feautures:
+\begin{itemize}
+    \item \textbf{Numerical features}: Missing values are imputed using the median and an indicator column is added to flag missing values.
+    \item \textbf{Categorical features}: Missing values are imputed using the most frequent value and one-hot encoding is applied, grouping rare or too frequent categories into "other".
+\end{itemize}
 
 
+For the classification task, Random Forest and XGBoost were selected. Tree-based algorithms naturally excel in sports prediction by capturing non-linear feature interactions (e.g., fatigue and rankings). Comparing them evaluates Random Forest's robust \textit{bagging} approach against XGBoost's sequential \textit{boosting}, which typically achieves higher predictive accuracy.
 
+Each algorithm is trained with and without betting odds to assess the predictive power of the market and using randomized cross-validation for hyperparameter fine-tuning, employing a time-series split to avoid data leakage. 
 
+The average cross-validation accuracy obtained on the training set is about 68\% and 70\% for the model trained without and with betting odds, respectively.
 
+\subsection*{Results evaluation}
+
+\paragraph{Naive baseline} The frequency of the most frequent class is about 50\%, as we randomly swapped the players in each match. Other interesting baselines regard ranking and points features, which reach an accuracy of about 63.5\%.
+The market odds baseline is 68.51\%, which is the most important benchmark to beat.
+
+The results obtained on the test set are summarized in \autoref{tab:models_results}.
+
+\begin{table}[ht]
+    \centering
+    \caption{Models performance comparison}
+    \label{tab:models_results}
+    \begin{tabular}{lccccc}
+        \hline
+        Model & Accuracy & F1-Score & ROC AUC & Log loss & Brier Score \\
+        \hline
+        RF no-odds & 65.06\% & 0.6477 & 0.7143 & 0.6169 & 0.2146 \\
+        XGB no-odds & 65.17\% & 0.6476 & 0.7168 & 0.6156 & 0.2141 \\
+        RF with-odds & 67.33\% & 0.6699 & 0.7397 & 0.5980 & 0.2063 \\
+        XGB with-odds & \textbf{68.03\%} & \textbf{0.6801} & \textbf{0.7471} & \textbf{0.5917} & \textbf{0.2036} \\
+        \hline
+    \end{tabular}
+\end{table}
+
+The most important features used by the models 

@@ -639,13 +639,17 @@ INPUT /Users/giovanniquacchia/Library/Application Support/MiKTeX/texmfs/install/
 INPUT /Users/giovanniquacchia/Library/Application Support/MiKTeX/texmfs/install/fonts/tfm/public/lm/ec-lmbx10.tfm
 INPUT /Users/giovanniquacchia/Library/Application Support/MiKTeX/texmfs/install/fonts/tfm/public/lm/ec-lmbxo10.tfm
 INPUT /Users/giovanniquacchia/Library/Application Support/MiKTeX/texmfs/data/fonts/map/pdftex/pdftex.map
+INPUT /Users/giovanniquacchia/Library/Application Support/MiKTeX/texmfs/install/fonts/tfm/public/lm/ec-lmr6.tfm
+INPUT /Users/giovanniquacchia/Library/Application Support/MiKTeX/texmfs/install/fonts/tfm/public/lm/ec-lmtt8.tfm
+INPUT /Users/giovanniquacchia/Library/Application Support/MiKTeX/texmfs/install/fonts/tfm/public/lm/ec-lmtt8.tfm
+INPUT /Users/giovanniquacchia/Library/Application Support/MiKTeX/texmfs/install/fonts/tfm/public/lm/ec-lmri12.tfm
 INPUT main.aux
 INPUT main.run.xml
 OUTPUT main.run.xml
+INPUT /Users/giovanniquacchia/Library/Application Support/MiKTeX/texmfs/install/fonts/enc/dvips/lm/lm-ec.enc
 INPUT /Users/giovanniquacchia/Library/Application Support/MiKTeX/texmfs/install/fonts/enc/dvips/lm/lm-mathsy.enc
 INPUT /Users/giovanniquacchia/Library/Application Support/MiKTeX/texmfs/install/fonts/enc/dvips/lm/lm-rm.enc
 INPUT /Users/giovanniquacchia/Library/Application Support/MiKTeX/texmfs/install/fonts/enc/dvips/lm/lm-mathit.enc
-INPUT /Users/giovanniquacchia/Library/Application Support/MiKTeX/texmfs/install/fonts/enc/dvips/lm/lm-ec.enc
 INPUT /Users/giovanniquacchia/Library/Application Support/MiKTeX/texmfs/install/fonts/enc/dvips/lm/lm-ts1.enc
 INPUT /Users/giovanniquacchia/Library/Application Support/MiKTeX/texmfs/install/fonts/type1/public/lm/lmbx12.pfb
 INPUT /Users/giovanniquacchia/Library/Application Support/MiKTeX/texmfs/install/fonts/type1/public/lm/lmbx12.pfb
@@ -665,6 +669,8 @@ INPUT /Users/giovanniquacchia/Library/Application Support/MiKTeX/texmfs/install/
 INPUT /Users/giovanniquacchia/Library/Application Support/MiKTeX/texmfs/install/fonts/type1/public/lm/lmr7.pfb
 INPUT /Users/giovanniquacchia/Library/Application Support/MiKTeX/texmfs/install/fonts/type1/public/lm/lmr8.pfb
 INPUT /Users/giovanniquacchia/Library/Application Support/MiKTeX/texmfs/install/fonts/type1/public/lm/lmr8.pfb
+INPUT /Users/giovanniquacchia/Library/Application Support/MiKTeX/texmfs/install/fonts/type1/public/lm/lmri12.pfb
+INPUT /Users/giovanniquacchia/Library/Application Support/MiKTeX/texmfs/install/fonts/type1/public/lm/lmri12.pfb
 INPUT /Users/giovanniquacchia/Library/Application Support/MiKTeX/texmfs/install/fonts/type1/public/lm/lmssbx10.pfb
 INPUT /Users/giovanniquacchia/Library/Application Support/MiKTeX/texmfs/install/fonts/type1/public/lm/lmssbx10.pfb
 INPUT /Users/giovanniquacchia/Library/Application Support/MiKTeX/texmfs/install/fonts/type1/public/lm/lmsy10.pfb
