@@ -1,7 +1,7 @@
 \paragraph{Introduction} The aim of this project is testing different machine learning algorithms to predict the outcome of tennis matches and analyzing the results obtained.
 
-\paragraph{Disclaimer} After realizing that the average betting market accuracy is around 66\%, I tried to build up a model that could beat the market. However, I discovered that regardless the model used, the most important information is embedded in the betting odds, and integrating other match- and player-specific data does not lead to any significant improvement.\footnote{Wilkens, 2021, ``Sports prediction and betting models in the machine learning age: The case of tennis''}
-In this report, I will present the most interesting features that I built to try to reach as much as possible the market accuracy and analyze the results, including the most correct and wrong predictions made by the model.
+\paragraph{Disclaimer} After realizing that the average betting market accuracy is around 70\%, I tried to build up a model that could beat the market. However, I discovered that regardless the model used, the most important information is embedded in the betting odds, and integrating other match- and player-specific data does not lead to any significant improvement.\footnote{Wilkens, 2021, ``Sports prediction and betting models in the machine learning age: The case of tennis''}
+In this report, I will present the most interesting features that I built to try to reach the market accuracy as closely as possible, and analyze the results, including the most correct and wrong predictions made by the tested models.
 
 \subsection*{Datasets and Data cleaning}
 
@@ -29,7 +29,7 @@ Finally, the dataset was saved in \texttt{data/cleaned/tennis\_players.xlsx}.
             & name\_first & name\_last \\
             \hline
             0 & Jannik & Sinner \\
-            1 & Novak & Doković \\
+            1 & Novak & Djoković \\
             2 & Rafael & Nadal \\
             \hline
         \end{tabular}
@@ -68,9 +68,9 @@ alongside a home advantage feature, mapping each match location to its correspon
         \hline
         Player 1 & Player 2 & Location & Age 1 & Age 2 & Age Diff & H1 & H2 & H.Adv & Home 1 & Home 2 & Home Adv \\
         \hline
-        valkusz m. & sinner j. & Budapest & 20.70 & 17.69 & 3.01 & R & R & 0.0 & HUN & ITA & -1.0 \\
-        calatrava a. & djokovic n. & Umag & 32.11 & 18.18 & 13.94 & R & R & 0.0 & ESP & SRB & 0.0 \\
-        nadal r. & berdych t. & Bastad & 19.10 & 19.81 & -0.71 & L & R & 1.0 & ESP & CZE & 0.0 \\
+        valkusz m. & sinner j. & Budapest & 20.70 & 17.69 & 3.01 & R & R & 0 & HUN & ITA & 1 \\
+        calatrava a. & djokovic n. & Umag & 32.11 & 18.18 & 13.94 & R & R & 0 & ESP & SRB & 0 \\
+        nadal r. & berdych t. & Bastad & 19.10 & 19.81 & -0.71 & L & R & 1 & ESP & CZE & 0 \\
         \hline
     \end{tabular}%
     }
@@ -82,17 +82,17 @@ alongside a home advantage feature, mapping each match location to its correspon
 \begin{equation*}
     E_1 = (1 + 10^{(R_2 - R_1)/400})^{-1}
 \end{equation*}
-The rating is updated post-match as $\Delta R = K \cdot (S_1 - E_1)$, where $R_i$ are pre-match ratings and $S_1 \in \{0, 1\}$ is the outcome. To account for rating maturity, I employ a dynamic update factor $K$ decreasing with career matches $M_i(t)$ as proposed by FiveThirtyEight \footnote{Bunker et al., 2023, ``A comparative evaluation of Elo ratings- and machine learning-based methods for tennis match result prediction''}:
+The rating is updated post-match as $\Delta R = K \cdot (S_1 - E_1)$, where $R_i$ are pre-match ratings and $S_1 \in \{0, 1\}$ is the outcome. To account for rating maturity, I employ a dynamic update factor $K$ decreasing with career matches $M_i(t)$. \footnote{Bunker et al., 2023, ``A comparative evaluation of Elo ratings- and machine learning-based methods for tennis match result prediction''}:
 \begin{equation*}
     K_i(t) = 250 \cdot (M_i(t) + 5)^{-0.4}
 \end{equation*}
 
 \paragraph{Surface Elo} Computed using the same formula as standard Elo but tracked independently for each surface. To address sparse data on specific courts, it is combined in a 50/50 blend with the overall rating. \footnote{Jeff Sackmann, 2019, ``An Introduction to Tennis Elo''}
-Given its high correlation with standard Elo, only the surface-specific version is retained for model training to avoid redundancy.
+Given its high correlation with standard Elo, about 93\%, only the surface-specific version is retained for model training to avoid redundancy.
 
 \paragraph{Fatigue} Player fatigue is modeled using an exponentially weighted moving average (EWMA). It recursively updates the fatigue metric to capture recent workload spikes while giving progressively less weight to older sessions:
 \begin{equation*}
-    \text{EWMA}_{\text{today}} = \text{Load}_{\text{today}} \cdot \lambda + (1 - \lambda) \cdot \text{EWMA}_{\text{yesterday}}, \quad \lambda = \frac{2}{N+1} \; \footnote{Murray et al, 2016, ``Calculating acute: Chronic workload ratios using exponentially weighted moving averages provides a more sensitive indicator of injury likelihood than rolling averages''}
+    \text{EWMA}_{\text{today}} = \text{Load}_{\text{today}} \cdot \lambda + (1 - \lambda) \cdot \text{EWMA}_{\text{yesterday}}, \quad \lambda = \frac{2}{N+1} \; \footnote{Murray et al, 2017, ``Calculating acute: Chronic workload ratios using exponentially weighted moving averages provides a more sensitive indicator of injury likelihood than rolling averages''}
 \end{equation*}
 
 where $\lambda$ is the degree of decay, $N$ is the fatigue window size in days and $\text{LOAD} \in \{0, 1\}$.
@@ -123,7 +123,7 @@ since on days without matches, $\text{LOAD}_{\text{today}}$ is 0. See the exampl
 \end{figure}
 
 \paragraph{Player form} The player recent form is computed as a weighted average of the last $N$ matches won, assigning a higher weight to matches against stronger opponents. 
-The dominance form is calculated using the same logic, considering the games won by the player in the last $N$ matches.
+The dominance form is calculated using the same logic, considering the games won by the player in the last $N$ matches (result $\in \{1, -1\}$).
 
 \begin{equation*}
     \texttt{weighted\_recent\_result} = \texttt{result} \cdot \frac{\texttt{opponent\_ELO}}{\texttt{BASE\_ELO}}
@@ -146,9 +146,9 @@ See the example in \autoref{fig:h2h_computation}.
         \hline
         Match ($P_1$ vs $P_2$) & $y$ & Pre-match H2H & Post-match H2H \\
         \hline
-        nadal vs djokovic & $1$ & $0$ & $-1$ \\
-        djokovic vs nadal & $0$ & $-1$ & $-2$ \\
-        nadal vs djokovic & $1$ & $2$ & $-3$ \\
+        nadal r. vs djokovic n. & $1$ & $0$ & $-1$ \\
+        djokovic n. vs nadal r. & $0$ & $-1$ & $-2$ \\
+        nadal r. vs djokovic n. & $1$ & $2$ & $-3$ \\
         \hline
     \end{tabular}
     \caption{Sample head-to-head calculation for two players. \\ The \texttt{pair\_key = (djokovic, nadal)} is sorted alphabetically and \texttt{y=1} when \texttt{P1} wins.}
@@ -198,4 +198,18 @@ The results obtained on the test set are summarized in \autoref{tab:models_resul
     \end{tabular}
 \end{table}
 
-The most important features used by the models 
+I noticed that, as expected, the models with odds assign an importance of about 34\% to the odds feature, making it one of the most important features used. 
+Other important features are the surface-specific Elo, ranking and points differences, which accurately capture the players' current form.
+
+\paragraph{Prediction Anomalies} The analysis performed on the test set revealed that the most confident correct predictions regard matches with a top player winner and a lower-ranked player loser, with a high Elo and ranking difference.
+Conversely, the most confident incorrect predictions share the same statistical profile --high Elo, ranking gap-- but the lower-ranked player wins against the favorite, often due to the favorite's fatigue or a recent loss of form.
+For instance, Cerundolo defeated Sinner in May 2026 due to a heat stroke, and Vesely upset Djokovic in 2022 during the Serbian's first tournament back after missing several events due to his refusal to get the Covid vaccine.
+
+This further analysis is essential to understand why the market odds are not always accurate, but they are still stronger than any model based solely on past match statistics, which cannot account for unpredictable physical or psychological variables.
+
+\paragraph{Feature Distribution} The distribution of the most important features, such as surface Elo, odds and ranking differences, show that the model is more likely to make correct predictions when the differences are larger, while it struggles with matches where the players are more skill-balanced.
+However, when the model does a wrong prediction on a large-gap match, it tends to do so with high confidence.
+
+The model achieves a higher accuracy in Grand Slam tournaments, where matches are longer and the stronger players have more time to recover from a bad set and making the final outcome much more predictable based on Elo and rankings.
+
+
