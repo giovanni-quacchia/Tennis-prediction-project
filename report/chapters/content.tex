@@ -178,7 +178,7 @@ The average cross-validation accuracy obtained on the training set is about 68\%
 \subsection*{Results evaluation}
 
 \paragraph{Naive baseline} The frequency of the most frequent class is about 50\%, as we randomly swapped the players in each match. Other interesting baselines regard ranking and points features, which reach an accuracy of about 63.5\%.
-The market odds baseline is 68.51\%, which is the most important benchmark to beat.
+The market odds baseline is 68.42\%, which is the most important benchmark to beat.
 
 The results obtained on the test set are summarized in \autoref{tab:models_results}.
 
@@ -190,10 +190,10 @@ The results obtained on the test set are summarized in \autoref{tab:models_resul
         \hline
         Model & Accuracy & F1-Score & ROC AUC & Log loss & Brier Score \\
         \hline
-        RF no-odds & 65.06\% & 0.6477 & 0.7143 & 0.6169 & 0.2146 \\
-        XGB no-odds & 65.17\% & 0.6476 & 0.7168 & 0.6156 & 0.2141 \\
-        RF with-odds & 67.33\% & 0.6699 & 0.7397 & 0.5980 & 0.2063 \\
-        XGB with-odds & \textbf{68.03\%} & \textbf{0.6801} & \textbf{0.7471} & \textbf{0.5917} & \textbf{0.2036} \\
+        RF no-odds & 64.96\% & 0.6444 & 0.7136 & 0.6172 & 0.2149 \\
+        XGB no-odds & 65.32\% & 0.6505 & 0.7168 & 0.6159 & 0.2143 \\
+        RF with-odds & 67.24\% & 0.6692 & 0.7410 & 0.5963 & 0.2057 \\
+        XGB with-odds & \textbf{67.92\%} & \textbf{0.6785} & \textbf{0.7459} & \textbf{0.5921} & \textbf{0.2039} \\
         \hline
     \end{tabular}
 \end{table}
@@ -201,7 +201,7 @@ The results obtained on the test set are summarized in \autoref{tab:models_resul
 I noticed that, as expected, the models with odds assign an importance of about 34\% to the odds feature, making it one of the most important features used. 
 Other important features are the surface-specific Elo, ranking and points differences, which accurately capture the players' current form.
 
-\paragraph{Prediction Anomalies} The analysis performed on the test set revealed that the most confident correct predictions regard matches with a top player winner and a lower-ranked player loser, with a high Elo and ranking difference.
+\paragraph{Prediction Anomalies} The analysis performed on the test set revealed that the most confident correct predictions regard matches with a top player winner and a lower-ranked player loser, with a high Elo and ranking differences.
 Conversely, the most confident incorrect predictions share the same statistical profile --high Elo, ranking gap-- but the lower-ranked player wins against the favorite, often due to the favorite's fatigue or a recent loss of form.
 For instance, Cerundolo defeated Sinner in May 2026 due to a heat stroke, and Vesely upset Djokovic in 2022 during the Serbian's first tournament back after missing several events due to his refusal to get the Covid vaccine.
 
