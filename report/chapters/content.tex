@@ -55,7 +55,7 @@ Finally, the dataset was saved in \texttt{data/cleaned/tennis\_players.xlsx}.
 
 Firstly, I randomly swapped the players in each match to avoid the model learning that the first player is always the winner.
 Then, I started creating simple features, such as players' ranking, points and odds differences.
-I also tested logarithmic differences to handle different ranking tiers, but omitted them from training because tree-based models do not require normalization nor standardization.
+I also tested logarithmic differences to handle different ranking tiers, but omitted them from training as they did not lead to any measurable improvement in model performance.
 
 \paragraph{Player-specific features} I computed the age difference between the two players, restricting ages between 16 and 45 and excluding homonyms. 
 I also defined a left-handed advantage feature to account for left-handers' rarity and opponents' lack of practice against them, 
