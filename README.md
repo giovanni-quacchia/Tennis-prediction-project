@@ -2,6 +2,8 @@
 
 In this project, we test different machine learning algorithms to predict the outcome of tennis matches and analyze the performance and results obtained.
 
+**Disclaimer**: Betting odds contain the most predictive information, and adding match- and player-specific features did not significantly improve accuracy. This report presents the engineered features, model results, and notable predictions.
+
 Please refer to **`report/main.pdf`** for the detailed report.
 
 ### Project Structure
@@ -108,5 +110,15 @@ Other important features are the surface-specific Elo, ranking and points differ
 
 #### Prediction Anomalies
 
+The analysis performed on the test set revealed that the most confident correct predictions regard matches with a top player winner and a lower-ranked player loser, with a high Elo and ranking differences.
+Conversely, the most confident incorrect predictions share the same statistical profile --high Elo, ranking gap-- but the lower-ranked player wins against the favorite, often due to the favorite's fatigue or a recent loss of form.
+For instance, Cerundolo defeated Sinner in May 2026 due to a heat stroke, and Vesely upset Djokovic in 2022 during the Serbian's first tournament back after missing several events due to his refusal to get the Covid vaccine.
+
+This further analysis is essential to understand why the market odds are not always accurate, but they are still stronger than any model based solely on past match statistics, which cannot account for unpredictable physical or psychological variables.
+
 #### Feature Distribution
 
+ The distribution of the most important features, such as surface Elo, odds and ranking differences, show that the model is more likely to make correct predictions when the differences are larger, while it struggles with matches where the players are more skill-balanced.
+However, when the model does a wrong prediction on a large-gap match, it tends to do so with high confidence.
+
+The model achieves a higher accuracy in Grand Slam tournaments, where matches are longer and the stronger players have more time to recover from a bad set and making the final outcome much more predictable based on Elo and rankings.
